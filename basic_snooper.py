@@ -1,10 +1,6 @@
-#%%
+# %%
 import socket
-import struct
 import random
-
-import matplotlib.pyplot as plt
-import numpy as np
 
 # %% Setup the socket
 try:
@@ -27,14 +23,24 @@ SERVER_IP_ADDR = "149.171.36.192"
 SERVER_PORT = 8319
 SERVER_AUTH_PORT = SERVER_PORT+1
 
-# %% Get messages from server
+def construct_request(Sr, Pr):
+    return Sr.to_bytes(4, byteorder="big") + Pr.to_bytes(4, byteorder="big")
+
+def decode_response(data):
+    Pt = int(data[:4].hex(), 16)
+    msg_id = int(data[4:8].hex(), 16)
+    msg = data[8:]
+    
+    return (Pt, msg_id, msg)
+
+# %% Send a snooper request
 Pr = random.randint(1, 1 << 31)
 Sr = 9
-datagram = struct.pack(">LL", Sr, Pr)
+datagram = construct_request(Sr, Pr)
 
 messages = []
 
-for i in range(1000):
+for _ in range(1000):
     sock.sendto(datagram, (SERVER_IP_ADDR, SERVER_PORT))
     try:
         data = sock.recv(1024)
@@ -42,28 +48,13 @@ for i in range(1000):
     except socket.timeout:
         print("Timed out")
         break
-
-    Pt, msg_id = struct.unpack(">LL", data[:8])
-    msg = data[8:]
+    
+    Pt, msg_id, msg = decode_response(data)
     
     if Pr != Pt:
         print(f"Mismatching Pr (sent {Pr}, got {Pt})")
         continue
-
-    msg_str = str(msg, 'ascii').replace('\n', '')
-    print(f"\r[{i}] [{msg_id}] {msg_str:20s}", end='')
+    
+    print(f"[{msg_id}] [len={len(msg)}] {str(msg, 'ascii')}")
     messages.append((msg_id, msg))
-
-# %% Show distribution of differences between message ids
-# Ignore the first two because they are potentially from previous message
-msg_ids = np.array([m[0] for m in messages])
-msg_ids = msg_ids[2:]
-msg_ids = msg_ids - msg_ids.min()
-deltas = msg_ids[1:]-msg_ids[:-1]
-print(np.mean(deltas), np.std(deltas))
-plt.hist(deltas)
-
-# %% Show distribution of message lengths
-msg_lengths = np.array([len(m[1]) for m in messages])
-print(np.mean(msg_lengths), np.std(msg_lengths))
-plt.hist(msg_lengths)
+# %%
