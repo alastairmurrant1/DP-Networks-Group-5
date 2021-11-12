@@ -1,12 +1,16 @@
 # %% Script for testing our different solvers
-from RealSnooperServer import RealSnooper
-from TestSnooperServer import TestSnooper
+from importlib import reload
+import RealSnooperServer
+import TestSnooperServer
+import SolverV1
 
 # fresh reload the module if we are updating it while testing
-from importlib import reload
-import SolverV1
 reload(SolverV1)
+reload(RealSnooperServer)
+reload(TestSnooperServer)
 
+from RealSnooperServer import RealSnooper
+from TestSnooperServer import TestSnooper
 from SolverV1 import Solver_V1 as Solver
 
 # %% Startup the real snooper server
@@ -25,8 +29,6 @@ sniping_errors = []
 
 while True:
     solver = Solver(snooper)
-    # 60% of the time we have a snipe offset of 1
-    solver.SNIPE_OFFSET = 1
 
     solver.PRINT_INFO = True
     solver.PRINT_DEBUG = True
@@ -48,9 +50,15 @@ while True:
 # %% Visualise the sniping errors
 import matplotlib.pyplot as plt
 import numpy as np
+from collections import Counter
 
 sniping_errors = np.array(sniping_errors)
 sniping_success_rate = np.sum(sniping_errors == 0) / len(sniping_errors)
+counts = Counter(sniping_errors)
+
+print(counts)
 print(f"sniping_success_rate={sniping_success_rate*100:.2f}%")
 print(np.mean(sniping_errors), np.std(sniping_errors))
 plt.hist(sniping_errors)
+
+# Counter({-1: 479, 0: 264, -2: 121, -3: 11, -6: 2, -4: 2, -5: 1, -9: 1, -8: 1, -7: 1})

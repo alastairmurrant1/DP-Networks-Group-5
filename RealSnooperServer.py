@@ -82,7 +82,8 @@ class RealSnooper:
         Pt, msg_id, msg = decode_response(data)
 
         if Pr != Pt:
-            raise ValueError(f"Mismatching Pr (sent {Pr}, got {Pt})")
+            print(f"[WARN] Mismatching Pr (sent {Pr}, got {Pt})")
+            #raise ValueError(f"Mismatching Pr (sent {Pr}, got {Pt})")
         
         return (msg_id, msg)
     
