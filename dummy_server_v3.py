@@ -129,7 +129,7 @@ def MainThread(server):
 if __name__ == "__main__":
     HOST,PORT = "localhost", 9999
     AUTH_PORT = PORT  - 1
-    data_rate = 1000                # data_rate*chars/second
+    data_rate = 1000                # data_rate*chars/second, slows down server response by a wide margin, due to time.sleep() not being suited for high speed operations
     txt_msg ="testcase2.txt"
 
     server = ThreadedUDPServer((HOST, PORT), ThreadedUDPRequestHandler)
