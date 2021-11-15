@@ -7,8 +7,10 @@ def factors(n):
     return set(reduce(list.__add__, ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
 class Solver_V1:
-    def __init__(self, snooper, flush=True):
+    def __init__(self, snooper, sniper, flush=True):
         self.snooper = snooper
+        self.sniper = sniper
+
         self.total_requests = 0
 
         self.all_packets = []
@@ -35,14 +37,10 @@ class Solver_V1:
         
         self.PRINT_DEBUG = False
         self.PRINT_INFO = True
-
+        
         # keep track of sniping attempts
         self.snipe_attempts = 0
         self.snipe_success = 0
-        self.snipe_errors = []
-
-        # if there is a consistent delay in our sniping, calibrate for this
-        self.SNIPE_OFFSET = 0
         
     def print_debug(self, msg):
         if self.PRINT_DEBUG:
@@ -51,6 +49,21 @@ class Solver_V1:
     def print_info(self, msg):
         if self.PRINT_INFO:
             print(msg)
+    
+    # get score if we attempt to snipe a particular location
+    # we know the probability of an offset occuring
+    def get_sniping_score(self, target_id):
+        index = target_id - self.STARTER_ID
+        return self.sniper.get_score(self.possible_messages, index)
+    
+    # get the actual score
+    def get_actual_score(self, target_id):
+        score = 0
+        for N, chunks in self.possible_messages.items():
+            i = self.get_relative_index(target_id, N)
+            if chunks[i] is None:
+                score += 1
+        return score
         
     # greedy search the best Cr to snipe a packet
     def get_Cr(self):
@@ -61,17 +74,13 @@ class Solver_V1:
         # greedy snipe
         hop_scores = []
         for hop in range(7, 100):
-            score = 0
-            for N, chunks in self.possible_messages.items():
-                i = self.get_relative_index(self.LAST_ID+hop, N)
-                if chunks[i] is None:
-                    score += 1
-            sort_val = (score << 10) - abs(hop-10)
+            score = self.get_sniping_score(self.LAST_ID+hop)
+            sort_val = score*1000 - abs(hop-10)
             hop_scores.append((sort_val, score, hop))
         
         _, best_score, best_hop = max(hop_scores, key=lambda h:h[0])
         
-        self.print_debug(f"[DEBUG] Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score}")
+        self.print_debug(f"[DEBUG] Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
         return best_hop
         
     
@@ -82,7 +91,7 @@ class Solver_V1:
         
         for _ in range(self.MAX_RETRIES):
             try:
-                packet = self.snooper.get_message(Cr-self.SNIPE_OFFSET)
+                packet = self.snooper.get_message(Cr)
                 self.total_requests += 1
                 break
             except socket.timeout:
@@ -92,21 +101,22 @@ class Solver_V1:
             raise Exception(f"Timed out after {self.MAX_RETRIES} retries")
                 
         msg_id, msg = packet
+        
+        actual_score = self.get_actual_score(msg_id)
 
         # check if our packet sniping was successful
         if self.LAST_ID is None:
-            snipe_success = None
+            snipe_error=None
         else:
             target_id = self.LAST_ID+Cr 
-            snipe_success = target_id == msg_id
-            self.snipe_attempts += 1
-            self.snipe_success += int(snipe_success)
-            self.snipe_errors.append(target_id-msg_id)
+            snipe_error = msg_id-target_id
+            self.sniper.push_error(snipe_error)
+
 
         # keep track of last id for future sniping attempts
         self.LAST_ID = msg_id
 
-        self.print_debug(f"[DEBUG] Got [{msg_id}] @ {self.total_requests} snipe_success=[{snipe_success}]")
+        self.print_debug(f"[DEBUG] Got [{msg_id}] @ {self.total_requests} snipe_error=[{snipe_error}] score=[{actual_score:.2f}]")
 
         # add packet to relevant queues        
         self.all_packets.append(packet)
@@ -207,6 +217,10 @@ class Solver_V1:
         nb_possible = len(self.possible_messages.keys())
         if nb_possible == 0:
             raise ValueError("No possible messages")
+            
+        # ignore if there is another potential match    
+        if nb_possible > 1:
+            return None
         
         completed_messages = {}
         for N, chunks in self.possible_messages.items():
@@ -224,11 +238,8 @@ class Solver_V1:
         if nb_completed == 1 and nb_possible > 1 and completed_messages.get(1, False):
             self.print_debug("[DEBUG] Ignoring 'completed' single packet message")
             return None
-
         
-        self.possible_messages = completed_messages
-        
-        progress = {k:sum((c is not None for c in v)) for k, v in self.possible_messages.items()}
+        progress = {k:sum((c is not None for c in v)) for k, v in completed_messages.items()}
         self.print_info(f"[INFO] Completed {progress} @ {self.total_requests}")
         
         if nb_completed > 1:

@@ -1,5 +1,16 @@
 import random
 
+class OffsetGenerator:
+    def __init__(self):
+        errors = {-1: 558, 0: 282, -2: 163, -3: 16, -4: 1, -6: 1}
+        offset_array = []
+        for offset, N in errors.items():
+            offset_array.extend([-offset]*N)
+        self.offset_array = offset_array
+    
+    def get_value(self):
+        return random.choice(self.offset_array)
+
 class TestSnooper:
     def __init__(self, messages):
         self.inter_response_threshold = 50
@@ -19,9 +30,12 @@ class TestSnooper:
         
         self.open_message(self.messages[self.current_message])
         self.reset_score()
+        
+        self.offset_generator = OffsetGenerator()
+        
+        self.USE_OFFSET = True
     
     def open_message(self, msg):
-        
         self.packets = []
         self.true_msg = msg
         
@@ -78,9 +92,11 @@ class TestSnooper:
     def get_message(self, Sr, check=False):
         if self.is_closed:
             raise ValueError("Snooper is closed")
+            
+        offset = 0 if not self.USE_OFFSET else self.offset_generator.get_value()
         
         prev_id = self.msg_id
-        next_id = (self.msg_id + Sr) % (1 << 63)
+        next_id = (self.msg_id + Sr + offset) % (1 << 63)
         self.msg_id = next_id
         
         self.check_inter_response(prev_id, next_id)

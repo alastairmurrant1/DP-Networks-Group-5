@@ -1,16 +1,23 @@
 # %% Script for testing our different solvers
-from RealSnooperServer import RealSnooper
-from TestSnooperServer import TestSnooper
+from importlib import reload
+import RealSnooperServer
+import TestSnooperServer
+import SolverV1
+import PacketSniper
 
 # fresh reload the module if we are updating it while testing
-from importlib import reload
-import SolverV1
 reload(SolverV1)
+reload(RealSnooperServer)
+reload(TestSnooperServer)
+reload(PacketSniper)
 
+from RealSnooperServer import RealSnooper
+from TestSnooperServer import TestSnooper
 from SolverV1 import Solver_V1 as Solver
+from PacketSniper import PacketSniper
 
 # %% Startup the real snooper server
-snooper = RealSnooper()
+snooper = RealSnooper(SERVER_PORT=8320, SERVER_AUTH_PORT=8321)
 
 # %% Startup a test server
 snooper = TestSnooper([
@@ -21,19 +28,16 @@ snooper = TestSnooper([
 
 # %% Run our solver against this
 messages = []
-sniping_errors = []
+sniper = PacketSniper()
 
 while True:
-    solver = Solver(snooper)
-    # 60% of the time we have a snipe offset of 1
-    solver.SNIPE_OFFSET = 1
+    solver = Solver(snooper, sniper)
 
     solver.PRINT_INFO = True
     solver.PRINT_DEBUG = True
     
     final_msg = solver.run()
     messages.append(final_msg)
-    sniping_errors.extend(solver.snipe_errors)
 
     res = snooper.post_message(final_msg)
     if res < 400:
@@ -47,10 +51,12 @@ while True:
 
 # %% Visualise the sniping errors
 import matplotlib.pyplot as plt
-import numpy as np
 
-sniping_errors = np.array(sniping_errors)
-sniping_success_rate = np.sum(sniping_errors == 0) / len(sniping_errors)
-print(f"sniping_success_rate={sniping_success_rate*100:.2f}%")
-print(np.mean(sniping_errors), np.std(sniping_errors))
-plt.hist(sniping_errors)
+print(sniper.net_counts)
+net_pdf = sniper.net_PDF
+print(net_pdf)
+
+plt.figure()
+plt.bar(list(net_pdf.keys()), list(net_pdf.values()))
+plt.grid(True)
+
