@@ -1,6 +1,7 @@
 #Sends socket requests to server backdoor and sends packets to snoop middle man
 #Socketserver is used to receive Sr from RealSnooperServer
 # Uses UDP
+# Need to update using only sockets
 import socket,socketserver
 
 class UDPRequestHandler(socketserver.BaseRequestHandler):
