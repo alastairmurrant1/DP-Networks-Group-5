@@ -33,22 +33,26 @@ class PacketSniper:
     def net_PDF(self):
         N = self.nb_snipes
         return {k:v/N for k,v in self.net_counts.items()}
+    
+    # get the most likely probabilities
+    def get_truncated_pdf(self, N=5):
+        pdf = list(self.PDF.items())
+        pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
+        return pdf[:N]
 
-    # masks = {k:v}
-    # k = length of message 
-    # v = chunks where None=missing chunk, bytes()=present chunk
     # index = offset we are sniping at
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
-    def get_score(self, messages, index, threshold=0.01):
+    def get_score(self, messages, index, threshold=0.01, N=4):
         score = 0
-        for error, proba in self.PDF.items():
+        for error, proba in self.get_truncated_pdf(N=N):
             # ignore if probability too low
             if proba < threshold:
                 continue
 
-            for N, chunks in messages.items():
+            for m in messages:
+                N = len(m)
                 j = (index + error) % N 
-                if chunks[j] is None:
+                if m[j] is None:
                     score += proba
 
         return score

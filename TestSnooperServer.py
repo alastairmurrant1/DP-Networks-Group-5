@@ -1,4 +1,5 @@
 import random
+import logging
 
 class OffsetGenerator:
     def __init__(self):
@@ -12,28 +13,28 @@ class OffsetGenerator:
         return random.choice(self.offset_array)
 
 class TestSnooper:
-    def __init__(self, messages):
+    def __init__(self, messages, logger=None, offset_generator=None):
         self.inter_response_threshold = 50
         self.inter_response_queue_increment = 1000
         
         self.inter_response_buffer = 0
         self.queue_length = 2
         
+        self.MAX_SCORE = 25
         self.Fn = 0
         self.N = 0
-        self.MAX_SCORE = 25
         self.total_score = 0
         
         self.messages = messages
         self.current_message = 0
+
         self.is_closed = False
         
+        self.offset_generator = offset_generator
+        self.logger = logger or logging.getLogger(__name__)
+
         self.open_message(self.messages[self.current_message])
         self.reset_score()
-        
-        self.offset_generator = OffsetGenerator()
-        
-        self.USE_OFFSET = True
     
     def open_message(self, msg):
         self.packets = []
@@ -49,6 +50,8 @@ class TestSnooper:
             msg_packet = msg[i:i+msg_len]
             self.packets.append(msg_packet)
             i += msg_len
+        
+        self.logger.info(f"Serving message #packets={len(self.packets)} #chars={len(msg)}")
     
     def check_inter_response(self, prev_id, next_id):
         inter_response_rate = 0
@@ -64,10 +67,10 @@ class TestSnooper:
         
         # If inter-response rate too low, reduce snooper queue
         if inter_response_rate < self.inter_response_threshold:
-            print("Inter response too low")
+            self.logger.warn("Inter response too low")
             self.queue_length = max(0, self.queue_length-1)
             if self.queue_length == 0:
-                print("Snooper detected")
+                self.logger.error("Snooper detected")
     
     @property
     def score(self):
@@ -93,7 +96,7 @@ class TestSnooper:
         if self.is_closed:
             raise ValueError("Snooper is closed")
             
-        offset = 0 if not self.USE_OFFSET else self.offset_generator.get_value()
+        offset = 0 if self.offset_generator is None else self.offset_generator.get_value()
         
         prev_id = self.msg_id
         next_id = (self.msg_id + Sr + offset) % (1 << 63)
