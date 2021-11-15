@@ -7,8 +7,10 @@ def factors(n):
     return set(reduce(list.__add__, ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
 class Solver_V1:
-    def __init__(self, snooper, flush=True):
+    def __init__(self, snooper, sniper, flush=True):
         self.snooper = snooper
+        self.sniper = sniper
+
         self.total_requests = 0
 
         self.all_packets = []
@@ -36,19 +38,9 @@ class Solver_V1:
         self.PRINT_DEBUG = False
         self.PRINT_INFO = True
         
-        # our sniping heuristic
-        self.sniping_offsets = [0, 1, 2, 3, 4, 6]
-        self.sniping_probability = [
-            0.2761998 , 0.54652302, 0.1596474 , 
-            0.01567091, 0.00097943, 0.00097943]
-
         # keep track of sniping attempts
         self.snipe_attempts = 0
         self.snipe_success = 0
-        self.snipe_errors = []
-
-        # if there is a consistent delay in our sniping, calibrate for this
-        self.SNIPE_OFFSET = 0
         
     def print_debug(self, msg):
         if self.PRINT_DEBUG:
@@ -57,18 +49,12 @@ class Solver_V1:
     def print_info(self, msg):
         if self.PRINT_INFO:
             print(msg)
-            
+    
     # get score if we attempt to snipe a particular location
     # we know the probability of an offset occuring
     def get_sniping_score(self, target_id):
-        score = 0
-        for N, chunks in self.possible_messages.items():
-            for probability, offset in zip(self.sniping_probability, self.sniping_offsets):
-                actual_id = target_id+offset
-                i = self.get_relative_index(actual_id, N)
-                if chunks[i] is None:
-                    score += probability
-        return score
+        index = target_id - self.STARTER_ID
+        return self.sniper.get_score(self.possible_messages, index)
     
     # get the actual score
     def get_actual_score(self, target_id):
@@ -105,7 +91,7 @@ class Solver_V1:
         
         for _ in range(self.MAX_RETRIES):
             try:
-                packet = self.snooper.get_message(Cr-self.SNIPE_OFFSET)
+                packet = self.snooper.get_message(Cr)
                 self.total_requests += 1
                 break
             except socket.timeout:
@@ -120,18 +106,17 @@ class Solver_V1:
 
         # check if our packet sniping was successful
         if self.LAST_ID is None:
-            snipe_success = None
+            snipe_error=None
         else:
             target_id = self.LAST_ID+Cr 
-            snipe_success = target_id == msg_id
-            self.snipe_attempts += 1
-            self.snipe_success += int(snipe_success)
-            self.snipe_errors.append(target_id-msg_id)
+            snipe_error = msg_id-target_id
+            self.sniper.push_error(snipe_error)
+
 
         # keep track of last id for future sniping attempts
         self.LAST_ID = msg_id
 
-        self.print_debug(f"[DEBUG] Got [{msg_id}] @ {self.total_requests} snipe_success=[{snipe_success}] score=[{actual_score:.2f}]")
+        self.print_debug(f"[DEBUG] Got [{msg_id}] @ {self.total_requests} snipe_error=[{snipe_error}] score=[{actual_score:.2f}]")
 
         # add packet to relevant queues        
         self.all_packets.append(packet)
