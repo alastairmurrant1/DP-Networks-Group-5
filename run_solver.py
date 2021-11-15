@@ -70,3 +70,5 @@ plt.figure()
 plt.bar(list(net_pdf.keys()), list(net_pdf.values()))
 plt.grid(True)
 
+
+# %%

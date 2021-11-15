@@ -7,7 +7,7 @@ from functools import reduce
 def factors(n):    
     return set(reduce(list.__add__, ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
-class Solver_V1:
+class Solver_V2:
     def __init__(self, snooper, sniper, logger=None, FLUSH_START=True):
         self.snooper = snooper
         self.sniper = sniper

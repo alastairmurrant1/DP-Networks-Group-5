@@ -25,7 +25,6 @@ class PacketSniper:
         
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
-
         self.net_counts[error] += 1
         self.nb_snipes += 1
     
@@ -33,7 +32,7 @@ class PacketSniper:
     def net_PDF(self):
         N = self.nb_snipes
         return {k:v/N for k,v in self.net_counts.items()}
-
+    
     # masks = {k:v}
     # k = length of message 
     # v = chunks where None=missing chunk, bytes()=present chunk
@@ -45,10 +44,12 @@ class PacketSniper:
             # ignore if probability too low
             if proba < threshold:
                 continue
-
+            i=0
             for N, chunks in messages.items():
+                i=i+1
                 j = (index + error) % N 
                 if chunks[j] is None:
                     score += proba
+            print(f"i: {i}")
 
         return score
