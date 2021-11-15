@@ -1,94 +1,90 @@
-# Echo server program
 import socket
-import time
+import socketserver
+import logging
 
-#Snoop Feeder 1 connects directly to the Snoop Server
-def toSnoopFeeder(data,sock,HOST,PORT):
-    print(f"data:{data} HOST:{HOST} PORT:{PORT}")
-    sock.sendto(data, (HOST, PORT))
-    received = 0
-    received = received.to_bytes(4,byteorder="big")
-    try:
-        if HOST == "149.171.36.192":
-            received = sock.recv(1024)
-            received = sock.recv(1024)
-        else:
-            received = sock.recv(1024)
-            print("Snooper Feeder !!")
+from RealSnooperServer import RealSnooper
 
-    except socket.timeout:
-        print('Timeout')
+def decode_request(data):
+    assert len(data) == 24
 
-    print(received)
-    if received == 0:
-        len_rec = 0
-    else:
-        len_rec = len(received)
-        print(len_rec)
-    return (len_rec,received)
+    packets = []
+    for i in range(3):
+        sub_data = data[i*8:(i+1)*8]
+        Sr = int.from_bytes(sub_data[:4], "big")
+        Pr = int.from_bytes(sub_data[4:8], "big")
+        packets.append((Sr, Pr))
 
-def decode_response(data):
-    data1 = data[:8]
-    data2 = data[8:16]
-    data3 = data[16:]
+    return packets
+
+def encode_responses(responses):
+    lengths = bytes([]) 
+    data = bytes([]) 
+    for response in responses:
+        if response is None:
+            lengths += int(0).to_bytes(4, "big")
+            continue
+            
+        Pr, msg_id, msg = response
+        lengths += int(8+len(msg)).to_bytes(4, "big")
+        data += int(Pr).to_bytes(4, "big") + int(msg_id).to_bytes(4, "big") + msg
     
-    return (data1,data2,data3)
+    return lengths + data
+
+class UDPRequestHandler(socketserver.BaseRequestHandler):
+    def handle(self):
+        request = self.request[0]
+        client_socket = self.request[1]
+
+        logging.debug(f"Got request from {self.client_address}")
+
+        packets = decode_request(request)
+        assert len(packets) == len(snoopers)
+        logging.debug(f"Got packets: {packets}")
+
+        # create callbacks
+        callbacks = []
+        for i, ((Sr, Pr), snooper) in enumerate(zip(packets, self.server.snoopers)):
+            callback = snooper.get_message(Sr, Pr, return_callback=True)
+            callbacks.append(callback)
+
+        # use callback after all datagrams sent
+        responses = []
+        for i, (callback, (Sr, Pr)) in enumerate(zip(callbacks, packets)):
+            try:
+                msg_id, msg = callback()
+                responses.append((Pr, msg_id, msg))
+            except socket.timeout:
+                logging.warn(f"Got timeout from snooper#{i}")
+                responses.append(None)
+
+        response_datagram = encode_responses(responses)
+        client_socket.sendto(response_datagram, self.client_address)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.DEBUG)
 
-    datagram_length = 24 #24 Bytes
-    num_feeders = 3
     #Server Host
     HOST_SERV = 'localhost'                 
     PORT_SERV = 33434  
 
-    HOST = []
-    PORT = []            
-    #Snoop-Me Server
-    HOST.append("149.171.36.192") 
-    PORT.append(8319) 
-    #Snoop Feeder 1
-    HOST.append('localhost') 
-    PORT.append(8889)
-    #Snoop Feeder 2
-    HOST.append('localhost')
-    PORT.append(8920) 
-
-    #Sockets used to connect to snoop feeders, in case of SF1 connects directly to server
-    sock= socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.settimeout(2)
- 
-
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-        s.bind((HOST_SERV, PORT_SERV))
-        i = 0
-        try:
-            while True:
-                datagrams,addr = s.recvfrom(1024)
-                print("datagrams:",datagrams)
-                data = [None,None,None]
-                data[0],data[1],data[2] = decode_response(datagrams)
-                print("data:",data)
-                len_res= []
-                com_res = b''
-                if len(datagrams) == datagram_length:
-                    for i in range(num_feeders):
-                        length_res,response = toSnoopFeeder(data[i],sock,HOST[i],PORT[i])
-                        com_res += response
-                        len_res.append(length_res.to_bytes(4,"big"))
-                    print("len_res",len_res[0])
-                    com_res = len_res[0] + len_res[1] + len_res[2]+ com_res
-                    
-                    print(f"Final Response {com_res}")
-                    s.sendto(com_res,addr)
-                    print("i:",i)
-                    i+=1
-                else: 
-                    raise ValueError("Datagram Dimensions Incorrect!")
-
-        except KeyboardInterrupt:
-            print("reached")
-            sock.close()
-            s.close()
-            exit()
+    # run this locally
+    s0 = RealSnooper()
+    # snooper echos have only 1 response
+    s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
+    s1.TOTAL_REPLIES = 1
+    s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
+    s2.TOTAL_REPLIES = 1
     
+    snoopers = [s0, s1, s2]
+    for i, snooper in enumerate(snoopers):
+        snooper.logger = logging.getLogger(f"snooper#{i}")
+    
+    server = socketserver.UDPServer((HOST_SERV, PORT_SERV), UDPRequestHandler)
+    server.snoopers = snoopers
+
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        server.shutdown()
+        server.server_close()
+        

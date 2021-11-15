@@ -1,7 +1,7 @@
 # %% Setup logger
 import logging
 
-file_logger = logging.FileHandler('solver_v1.log')
+file_logger = logging.FileHandler('solver_multi_v1.log')
 console = logging.StreamHandler()
 console.setLevel(logging.DEBUG)
 
@@ -13,47 +13,33 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 # %% Script for testing our different solvers
 from importlib import reload
-import RealSnooperServer
+
+import MultiSnooperServer
 import RealPostServer
-import TestSnooperServer
-import SolverV1
+import SolverV1_Multi
 import PacketSniper
 
 # fresh reload the module if we are updating it while testing
-reload(SolverV1)
-reload(RealSnooperServer)
+reload(MultiSnooperServer)
 reload(RealPostServer)
-reload(TestSnooperServer)
+reload(SolverV1_Multi)
 reload(PacketSniper)
 
-from RealSnooperServer import RealSnooper
+from MultiSnooperServer import MultiSnooperServer
 from RealPostServer import RealPostServer
-from TestSnooperServer import TestSnooper, OffsetGenerator
-from SolverV1 import Solver_V1 as Solver
+from SolverV1_Multi import Solver_V1_Multi as Solver
 from PacketSniper import PacketSniper
 
 # %% Startup the real snooper server
-snooper = RealSnooper()
-snooper.logger.setLevel(logging.INFO)
-post_server = RealPostServer(SERVER_PORT=snooper.SERVER_PORT+1)
-
-# %% Startup a test server
-# snooper = TestSnooper([
-#     "This is the first message\nAnd this is part of the first message",
-#     "Hello world\n",
-#     "This is the third message but quite long\n "*100,
-#     "o"*5000,
-# ])
-# post_server = snooper
-
-# snooper.offset_generator = OffsetGenerator()
+snooper_server = MultiSnooperServer()
+post_server = RealPostServer()
 
 # %% Run our solver against this
 messages = []
-sniper = PacketSniper()
+snipers = [PacketSniper() for _ in range(snooper_server.TOTAL_SNOOPERS)]
 
 while True:
-    solver = Solver(snooper, sniper)
+    solver = Solver(snooper_server, snipers)
     solver.logger.setLevel(logging.DEBUG)
     
     final_msg = solver.run(sparse_guess=True)
