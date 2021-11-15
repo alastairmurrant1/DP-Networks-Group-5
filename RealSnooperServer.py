@@ -1,5 +1,6 @@
 import socket
 import random
+import logging
 
 # To setup the server we do the following
 # 1. SSH via 'ssh -X np14@149.171.36.192'
@@ -17,31 +18,42 @@ class RealSnooper:
 
         self.packet_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.packet_sock.settimeout(2)
+
+        self.logger = logging.getLogger(__name__)
+
+        # if we get duplicates for some reason
+        self.TOTAL_REPLIES = 2
     
     def close(self):
         self.packet_sock.close()
 
     # get a message from the server with our desired Sr 
     def get_message(self, Sr, Pr=None):
-
         if Pr is None:
             Pr = random.randint(1, 1 << 31)
 
         datagram = self.construct_packet_request(Sr, Pr)
-
         self.packet_sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
 
-        try:
-            data = self.packet_sock.recv(1024)
-            data = self.packet_sock.recv(1024) # due to duplication of udp response
-        except socket.timeout as ex:
-            raise ex
-
-        Pt, msg_id, msg = self.decode_packet_response(data)
-
-        if Pr != Pt:
-            print(f"[WARN] Mismatching Pr (sent {Pr}, got {Pt})")
-            #raise ValueError(f"Mismatching Pr (sent {Pr}, got {Pt})")
+        # run through responses until we get our desired packet
+        msg_id = None
+        while True: 
+            try:
+                # receive duplicates
+                for _ in range(self.TOTAL_REPLIES):
+                    data = self.packet_sock.recv(1024)
+                
+                # check if last packet contained correct Pr
+                Pt, msg_id, msg = self.decode_packet_response(data)
+                if Pt == Pr:
+                    break
+                else:
+                    self.logger.warn(f"Mismatching Pr (sent {Pr}, got {Pt})")
+            except socket.timeout as ex:
+                # if no previous replies, then raise timeout error
+                if msg_id is None:
+                    raise ex
+                break
         
         return (msg_id, msg)
 

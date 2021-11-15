@@ -1,13 +1,14 @@
-from functools import reduce
 import random
 import socket
+import logging
 
 # https://stackoverflow.com/questions/6800193/what-is-the-most-efficient-way-of-finding-all-the-factors-of-a-number-in-python
+from functools import reduce
 def factors(n):    
     return set(reduce(list.__add__, ([i, n//i] for i in range(1, int(n**0.5) + 1) if n % i == 0)))
 
 class Solver_V1:
-    def __init__(self, snooper, sniper, flush=True):
+    def __init__(self, snooper, sniper, logger=None, FLUSH_START=True):
         self.snooper = snooper
         self.sniper = sniper
 
@@ -32,23 +33,11 @@ class Solver_V1:
         # therefore this is our maximum number of packets
         self.MAX_PACKETS = (5000//4) + 1
         self.MAX_RETRIES = 10
+
+        self.FLUSH_START = FLUSH_START
+
+        self.logger = logger or logging.getLogger(__name__)
         
-        self.flush = flush
-        
-        self.PRINT_DEBUG = False
-        self.PRINT_INFO = True
-        
-        # keep track of sniping attempts
-        self.snipe_attempts = 0
-        self.snipe_success = 0
-        
-    def print_debug(self, msg):
-        if self.PRINT_DEBUG:
-            print(msg)
-            
-    def print_info(self, msg):
-        if self.PRINT_INFO:
-            print(msg)
     
     # get score if we attempt to snipe a particular location
     # we know the probability of an offset occuring
@@ -80,10 +69,9 @@ class Solver_V1:
         
         _, best_score, best_hop = max(hop_scores, key=lambda h:h[0])
         
-        self.print_debug(f"[DEBUG] Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
+        self.logger.debug(f"Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
         return best_hop
-        
-    
+
     # get message and add them to the relevant queues
     def get_message(self, Cr=None):
         if Cr is None:
@@ -95,7 +83,7 @@ class Solver_V1:
                 self.total_requests += 1
                 break
             except socket.timeout:
-                self.print_debug(f"[DEBUG] Got a timeout @ {self.total_requests}")
+                self.logger.debug(f"Got a timeout @ {self.total_requests}")
                 continue
         else:
             raise Exception(f"Timed out after {self.MAX_RETRIES} retries")
@@ -116,7 +104,7 @@ class Solver_V1:
         # keep track of last id for future sniping attempts
         self.LAST_ID = msg_id
 
-        self.print_debug(f"[DEBUG] Got [{msg_id}] @ {self.total_requests} snipe_error=[{snipe_error}] score=[{actual_score:.2f}]")
+        self.logger.debug(f"Got [{msg_id}] @ {self.total_requests} snipe_error=[{snipe_error}] score=[{actual_score:.2f}]")
 
         # add packet to relevant queues        
         self.all_packets.append(packet)
@@ -134,7 +122,7 @@ class Solver_V1:
     # substring = None if not found yet
     def get_initial_estimates(self):
         # flush old responses
-        if self.flush:
+        if self.FLUSH_START:
             for _ in range(10):
                 self.get_message()
                 
@@ -155,7 +143,7 @@ class Solver_V1:
         possible_lengths = factors(N)
         self.STARTER_ID = eof_id_1 + 1 # a known starting index
         
-        self.print_debug(f"[DEBUG] Possible lengths {possible_lengths}")
+        self.logger.debug(f"Possible lengths {possible_lengths}")
         
         # create blank chunks list for each possible length
         self.possible_messages = {}
@@ -172,8 +160,11 @@ class Solver_V1:
     def cull_invalid_lengths(self):  
         nb_unique_packets = len(self.unique_packets)
         for N in list(self.possible_messages.keys()):
-            if N < nb_unique_packets or N > self.MAX_PACKETS:
-                self.print_debug(f"[DEBUG] Removed length {N} since outside of lower and upper bound")
+            if N < nb_unique_packets:
+                self.logger.debug(f"Removed length {N} since below min_unique={nb_unique_packets}")
+                self.possible_messages.pop(N, None)
+            elif N > self.MAX_PACKETS:
+                self.logger.debug(f"Removed length {N} since above max={self.MAX_PACKETS}")
                 self.possible_messages.pop(N, None)
     
     # get the index inside the partially complete message
@@ -209,7 +200,7 @@ class Solver_V1:
         
         # cull invalid messages
         for N in invalid_lengths:
-            self.print_debug(f"[DEBUG] Removed length {N} since message conflicts when wrapping")
+            self.logger.debug(f"Removed length {N} since message conflicts when wrapping")
             self.possible_messages.pop(N, None)
             
     # check if there are completed messages
@@ -236,21 +227,21 @@ class Solver_V1:
         # or we were unlucky and only got the delimiter packet twice in a row 
         # we only take this as the "completed" message if there are no other possibilities
         if nb_completed == 1 and nb_possible > 1 and completed_messages.get(1, False):
-            self.print_debug("[DEBUG] Ignoring 'completed' single packet message")
+            self.logger.debug("Ignoring 'completed' single packet message")
             return None
         
         progress = {k:sum((c is not None for c in v)) for k, v in completed_messages.items()}
-        self.print_info(f"[INFO] Completed {progress} @ {self.total_requests}")
+        self.logger.info(f"Completed {progress} @ {self.total_requests}")
         
         if nb_completed > 1:
-            print(f"[WARN] Got multiple completed messages: {list(completed_messages.keys())}")
+            self.logger.warn(f"Got multiple completed messages: {list(completed_messages.keys())}")
             
         final_msg = list(completed_messages.values())[0]
         final_msg = ''.join((str(chunk, "utf-8") for chunk in final_msg))[:-1]
         return final_msg
         
     def run(self):
-        self.print_debug(f"[DEBUG] Starting solver run")
+        self.logger.debug(f"Starting solver run")
         self.get_initial_estimates()
         
         while True:
@@ -259,7 +250,7 @@ class Solver_V1:
                 return final_msg
             
             progress = {k:sum((c is not None for c in v)) for k, v in self.possible_messages.items()}
-            self.print_debug(f"[DEBUG] Progress {progress} @ {self.total_requests}")
+            self.logger.debug(f"Progress {progress} @ {self.total_requests}")
             
             self.get_message()
                 

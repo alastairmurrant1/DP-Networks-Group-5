@@ -39,7 +39,7 @@ class PacketSniper:
     # v = chunks where None=missing chunk, bytes()=present chunk
     # index = offset we are sniping at
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
-    def get_score(self, messages, index, threshold=0.05):
+    def get_score(self, messages, index, threshold=0.01):
         score = 0
         for error, proba in self.PDF.items():
             # ignore if probability too low
