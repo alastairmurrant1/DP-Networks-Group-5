@@ -12,16 +12,19 @@ class RealSnooper:
         self.SERVER_IP_ADDR = SERVER_IP_ADDR
         self.SERVER_PORT = SERVER_PORT
 
-        self.packet_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.packet_sock.settimeout(2)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(2)
 
         self.logger = logging.getLogger(__name__)
 
         # if we get duplicates for some reason
         self.TOTAL_REPLIES = 2
     
+    def settimeout(self, *args, **kwargs):
+        self.sock.settimeout(*args, **kwargs)
+    
     def close(self):
-        self.packet_sock.close()
+        self.sock.close()
     
     def _fetch_message(self, Pr):
         # run through responses until we get our desired packet
@@ -30,7 +33,7 @@ class RealSnooper:
             try:
                 # receive duplicates
                 for _ in range(self.TOTAL_REPLIES):
-                    data = self.packet_sock.recv(1024)
+                    data = self.sock.recv(1024)
                 
                 # check if last packet contained correct Pr
                 try:
@@ -62,7 +65,7 @@ class RealSnooper:
             Pr = random.randint(1, 1 << 31)
 
         datagram = self.construct_packet_request(Sr, Pr)
-        self.packet_sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
+        self.sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
 
         if not return_callback:
             return self._fetch_message(Pr)
