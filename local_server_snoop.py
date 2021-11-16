@@ -32,6 +32,7 @@ def encode_responses(responses):
     
     return lengths + data
 
+
 class UDPRequestHandler(socketserver.BaseRequestHandler):
     def handle(self):
         request = self.request[0]
@@ -39,8 +40,23 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
 
         logging.debug(f"Got request from {self.client_address}")
 
+        if request == int("DEADBEEFDEADBEEF", 16).to_bytes(8, "big"):
+            logging.info(f"Replying with total_snoopers={self.server.multi_snooper.TOTAL_SNOOPERS}")
+            response_datagram = self.handle_total_snoopers_request(request)
+        else:
+            response_datagram = self.handle_snooper_request(request)
+
+        client_socket.sendto(response_datagram, self.client_address)
+
+    # handle request for number of snoopers running 
+    def handle_total_snoopers_request(self, request):
+        total_snoopers = self.server.multi_snooper.TOTAL_SNOOPERS
+        return int.to_bytes(total_snoopers, 4, "big")
+
+    # handle request for array of (Sr, Pr)
+    def handle_snooper_request(self, request):
         packets = decode_request(request)
-        assert len(packets) == len(snoopers)
+        assert len(packets) == self.server.multi_snooper.TOTAL_SNOOPERS
         logging.debug(f"Got packets: {packets}")
 
         Sr_arr = [Sr for Sr, Pr in packets]
@@ -59,7 +75,7 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
                 responses.append((Pr, msg_id, msg))
 
         response_datagram = encode_responses(responses)
-        client_socket.sendto(response_datagram, self.client_address)
+        return response_datagram
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

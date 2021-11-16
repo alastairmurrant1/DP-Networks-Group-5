@@ -9,12 +9,24 @@ class HostedMultiSnooperServer:
     def __init__(self, HOST="localhost", PORT=33434, logger=None):
         self.HOST = HOST
         self.PORT = PORT
-        self.TOTAL_SNOOPERS = 3
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(2)
 
         self.logger = logger or logging.getLogger(__name__)
+
+        self.TOTAL_SNOOPERS = self.get_total_snoopers()
+
+    # get the total snoopers from the local snooper 
+    def get_total_snoopers(self):
+        datagram = int("DEADBEEFDEADBEEF", 16).to_bytes(8, "big")
+        self.sock.sendto(datagram, (self.HOST, self.PORT))
+        try:
+            data = self.sock.recv(2048)
+        except socket.timeout as ex:
+            self.logger.error("Timed out")
+            raise ex
+        return int.from_bytes(data[:4], "big")
 
     # Returns an array of packets
     # A packet is None is that snooping channel has timedout 
