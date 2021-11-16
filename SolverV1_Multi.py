@@ -63,14 +63,17 @@ class Solver_V1_Multi:
         
     # greedy search the best Cr to snipe a packet
     def get_Crs(self):
+        # RANDOM_RANGE = (1,2)
+        RANDOM_RANGE = (11,20)
+
         # random search if cant snipe
         if not self.LAST_ID:
-            return [random.randint(11,20) for _ in range(self.TOTAL_SNOOPERS)]
+            return [random.randint(*RANDOM_RANGE) for _ in range(self.TOTAL_SNOOPERS)]
 
         if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
             return [self.greedy_snipe(i) for i in range(self.TOTAL_SNOOPERS)]
         
-        return [random.randint(11,20) for _ in range(self.TOTAL_SNOOPERS)]
+        return [random.randint(*RANDOM_RANGE) for _ in range(self.TOTAL_SNOOPERS)]
 
     def greedy_snipe(self, snooper_index): 
         hop_scores = []

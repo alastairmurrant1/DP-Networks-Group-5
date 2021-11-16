@@ -45,7 +45,7 @@ args = parser.parse_args()
 # run this locally
 snoopers = []
 s0 = RealSnooper()
-s0.settimeout(1)
+s0.settimeout(0.1)
 snoopers.append(s0)
 
 for _ in range(args.total_snoopers-1):
@@ -65,6 +65,7 @@ for _ in range(args.total_snoopers-1):
 
 for i, snooper in enumerate(snoopers):
     snooper.logger = logging.getLogger(f"snooper#{i}")
+    snooper.logger.setLevel(logging.INFO)
 
 # Create parent snooper
 snooper_server = MultiSnooperServer(snoopers)

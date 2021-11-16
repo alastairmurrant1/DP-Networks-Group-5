@@ -19,6 +19,8 @@ class RealSnooper:
 
         # if we get duplicates for some reason
         self.TOTAL_REPLIES = 2
+
+        self.sock.connect((self.SERVER_IP_ADDR, self.SERVER_PORT))
     
     def settimeout(self, *args, **kwargs):
         self.sock.settimeout(*args, **kwargs)
@@ -65,7 +67,8 @@ class RealSnooper:
             Pr = random.randint(1, 1 << 31)
 
         datagram = self.construct_packet_request(Sr, Pr)
-        self.sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
+        # self.sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
+        self.sock.send(datagram)
 
         if not return_callback:
             return self._fetch_message(Pr)

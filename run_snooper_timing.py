@@ -9,7 +9,8 @@ import argparse
 
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--snoopers", default=3)
+parser.add_argument("--snoopers", default=3, type=int)
+parser.add_argument("--use-callbacks", action="store_true")
 
 args = parser.parse_args()
 TOTAL_SNOOPERS = args.snoopers
@@ -40,7 +41,7 @@ N_success = 0
 for nb_request in range(N_requests):
     Sr = [random.randint(9, 15) for _ in snoopers]
     t0 = timeit.default_timer()
-    packets = multi_snooper.get_messages(Sr)
+    packets = multi_snooper.get_messages(Sr, use_callbacks=args.use_callbacks)
     t1 = timeit.default_timer()
     dt = t1-t0
     times.append(dt)
