@@ -1,5 +1,5 @@
 """
-Run the multi solver with the multisnooper server hosted on the same thread
+Run the multi solver with the multisnooper server hosted on a local socket
 """
 # %% Setup logger
 import logging
@@ -17,46 +17,14 @@ logging.basicConfig(handlers=[file_logger, console])
 logging.getLogger().setLevel(logging.DEBUG)
 
 # %% Script for testing our different solvers
-from MultiSnooperServer import MultiSnooperServer
+from HostedMultiSnooperServer import HostedMultiSnooperServer
 from RealPostServer import RealPostServer
 from RealSnooperServer import RealSnooper
 from SolverV1_Multi import Solver_V1_Multi as Solver
 from PacketSniper import PacketSniper
 
-# %% Startup the real snooper server
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument("--total-snoopers", default=10, type=int)
-args = parser.parse_args()
-
-# Setup child snoopers
-# run this locally
-snoopers = []
-s0 = RealSnooper()
-s0.settimeout(0.1)
-snoopers.append(s0)
-
-for _ in range(args.total_snoopers-1):
-    s = RealSnooper()
-    s.settimeout(0.1)
-    snoopers.append(s)
-
-# snooper echos have only 1 response
-# since we don't really have async code, we just collect the responses in order
-# thus the delay from the previous snooper in the list will add up 
-# s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
-# s1.TOTAL_REPLIES = 1
-# s1.settimeout(0.5)
-# s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
-# s2.TOTAL_REPLIES = 1
-# s2.settimeout(0.25)
-
-for i, snooper in enumerate(snoopers):
-    snooper.logger = logging.getLogger(f"snooper#{i}")
-    snooper.logger.setLevel(logging.INFO)
-
 # Create parent snooper
-snooper_server = MultiSnooperServer(snoopers)
+snooper_server = HostedMultiSnooperServer()
 post_server = RealPostServer()
 
 # %% Run our solver against this
