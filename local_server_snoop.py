@@ -64,6 +64,8 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--use-callbacks", action="store_true")
+    parser.add_argument("--use-feeders", action="store_true")
+    parser.add_argument("--total-local-snoopers", default=3, type=int)
 
     args = parser.parse_args()
 
@@ -74,14 +76,24 @@ if __name__ == "__main__":
     PORT_SERV = 33434  
 
     # run this locally
+    snoopers = []
     s0 = RealSnooper()
-    # snooper echos have only 1 response
-    s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
-    s1.TOTAL_REPLIES = 1
-    s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
-    s2.TOTAL_REPLIES = 1
+    snoopers.append(s0)
+
+    # use external snooping servers
+    if args.use_feeders:
+        # snooper echos have only 1 response
+        s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
+        s1.TOTAL_REPLIES = 1
+        s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
+        s2.TOTAL_REPLIES = 1
+    # use servers on same thread
+    # NOTE: Cannot use this in production
+    else:
+        for _ in range(args.total_local_snoopers-1):
+            s = RealSnooper()
+            snoopers.append(s)
     
-    snoopers = [s0, s1, s2]
     for i, snooper in enumerate(snoopers):
         snooper.logger = logging.getLogger(f"snooper#{i}")
     
