@@ -22,6 +22,8 @@ class Solver_V1:
         # to use greedy sniping
         self.DENSE_GUESS_THRESHOLD = 100
 
+        self.snooperInUse=0
+
         self.logger = logger or logging.getLogger(__name__)
         
         
@@ -56,15 +58,15 @@ class Solver_V1:
         return score
         
     # greedy search the best Cr to snipe a packet
-    def get_Cr(self):
+    def get_all_Cr(self):
         # random search if cant snipe
         if not self.LAST_ID:
-            return random.randint(8,12)
+            return [random.randint(11,20) for _ in range(self.snooperInUse)]
 
         if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
-            return self.greedy_snipe()
+            return [self.greedy_snipe(i) for i in range(self.snooperInUse)]
         
-        return random.randint(8,12)
+        return [random.randint(11,20) for _ in range(self.snooperInUse)]
 
     def greedy_snipe(self): 
         hop_scores = []
@@ -110,7 +112,7 @@ class Solver_V1:
     # get message and add them to the relevant queues
     def get_message(self, Cr=None):
         if Cr is None:
-            Cr = self.get_Cr()
+            Cr = self.get_all_Cr()
         
         # attempt to get message
         for _ in range(self.MAX_RETRIES):
