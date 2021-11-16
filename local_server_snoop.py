@@ -80,7 +80,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--use-callbacks", action="store_true")
     parser.add_argument("--use-feeders", action="store_true")
-    parser.add_argument("--total-local-snoopers", default=3, type=int)
+    parser.add_argument("--total-snoopers", default=3, type=int)
+    parser.add_argument("--server-ip-addr", default="149.171.36.192", type=str)
+    parser.add_argument("--server-port", default=8319, type=int)
 
     args = parser.parse_args()
 
@@ -90,36 +92,39 @@ if __name__ == "__main__":
     HOST_SERV = 'localhost'                 
     PORT_SERV = 33434  
 
-    # run this locally
-    snoopers = []
-    s0 = RealSnooper()
-    snoopers.append(s0)
-
     # use external snooping servers
+    # NOTE: Use this in production
     if args.use_feeders:
+        # run this locally
+        s0 = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
         # snooper echos have only 1 response
         s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
         s1.TOTAL_REPLIES = 1
         s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
         s2.TOTAL_REPLIES = 1
+        snoopers = [s0,s1,s2]
     # use servers on same thread
     # NOTE: Cannot use this in production
     else:
-        for _ in range(args.total_local_snoopers-1):
-            s = RealSnooper()
-            snoopers.append(s)
-    
+        snoopers = []
+        for _ in range(args.total_snoopers):
+            snooper = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
+            snoopers.append(snooper)
+
+    # label each snooper for logging 
     for i, snooper in enumerate(snoopers):
         snooper.logger = logging.getLogger(f"snooper#{i}")
+        snooper.logger.setLevel(logging.DEBUG)
     
     multi_snooper = MultiSnooperServer(snoopers)
+    multi_snooper.logger.setLevel(logging.DEBUG)
 
-    logging.info(f"Starting local snooping server on {HOST_SERV}:{PORT_SERV}") 
     server = socketserver.UDPServer((HOST_SERV, PORT_SERV), UDPRequestHandler)
     server.multi_snooper = multi_snooper
     server.env_args = args
 
     try:
+        logging.info(f"Starting local snooping server on {HOST_SERV}:{PORT_SERV}") 
         server.serve_forever()
     except KeyboardInterrupt:
         server.shutdown()
