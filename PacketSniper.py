@@ -2,26 +2,30 @@
 Keeps tracks of recent sniping errors to build a density function
 For a given set of masks, it returns the scores based on a heuristic
 """
-from collections import deque, Counter
+from collections import deque, Counter, time
 
 class PacketSniper:
     def __init__(self, maxlen=100):
         self.maxlen = maxlen
         self.errors = deque([], maxlen=maxlen+1)
         self.counts = Counter([])
+        self.countsTimes = Counter([])
         self.PDF = {}
 
         self.net_counts = Counter([])
         self.nb_snipes = 0
+        
 
     # update recent error window, counts, and PDF 
     def push_error(self, error):
         self.errors.append(error)
         self.counts[error] += 1
+        self.countsTimes[error]=time.time()
 
         if len(self.errors) > self.maxlen:
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
+            self.countsTimes[error].delete()
         
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
@@ -33,12 +37,32 @@ class PacketSniper:
     def net_PDF(self):
         N = self.nb_snipes
         return {k:v/N for k,v in self.net_counts.items()}
+
+    @property
+    def time_PDF(self, t=1):
+        i=0
+        newCounts = Counter([])
+        for k,v in self.net_counts.items():
+
+            if (time.time()- self.countsTimes[k] < t):
+                newCounts[k]=v
+            
+        
+        return {k:v/N for k,v in newCounts.items() }
     
+    # get the most likely probabilities
+    def get_over_range_pdf(self, N=5):
+        pdf = list(time_PDF(self).items())
+
+        pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
+        return pdf[:N]
+
     # get the most likely probabilities
     def get_truncated_pdf(self, N=5):
         pdf = list(self.PDF.items())
         pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
         return pdf[:N]
+
 
     # index = offset we are sniping at
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
