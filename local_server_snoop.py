@@ -98,9 +98,9 @@ if __name__ == "__main__":
         # run this locally
         s0 = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
         # snooper echos have only 1 response
-        s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
+        s1 = RealSnooper(SERVER_IP_ADDR="34.87.197.254", SERVER_PORT=8889)
         s1.TOTAL_REPLIES = 1
-        s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
+        s2 = RealSnooper(SERVER_IP_ADDR="34.116.69.217", SERVER_PORT=8920)
         s2.TOTAL_REPLIES = 1
         snoopers = [s0,s1,s2]
     # use servers on same thread
@@ -115,6 +115,10 @@ if __name__ == "__main__":
     for i, snooper in enumerate(snoopers):
         snooper.logger = logging.getLogger(f"snooper#{i}")
         snooper.logger.setLevel(logging.DEBUG)
+        if i == 0:
+            snooper.settimeout(1)
+        else:
+            snooper.settimeout(0.5)
     
     multi_snooper = MultiSnooperServer(snoopers)
     multi_snooper.logger.setLevel(logging.DEBUG)

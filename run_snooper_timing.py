@@ -1,35 +1,10 @@
-from MultiSnooperServer import MultiSnooperServer
-from RealSnooperServer import RealSnooper
+from HostedMultiSnooperServer import HostedMultiSnooperServer
 import random
 import logging
 import timeit
 import numpy as np
 
-import argparse
-
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--snoopers", default=3, type=int)
-parser.add_argument("--use-callbacks", action="store_true")
-
-args = parser.parse_args()
-TOTAL_SNOOPERS = args.snoopers
-
-snoopers = []
-s0 = RealSnooper()
-s0.settimeout(1)
-snoopers.append(s0)
-
-for _ in range(TOTAL_SNOOPERS-1):
-    s = RealSnooper()
-    s.settimeout(0.1)
-    snoopers.append(s)
-
-multi_snooper = MultiSnooperServer(snoopers)
-
-for i, snooper in enumerate(snoopers):
-    snooper.logger = logging.getLogger(f"snooper#{i}")
-    snooper.logger.setLevel(logging.INFO)
+multi_snooper = HostedMultiSnooperServer()
 multi_snooper.logger.setLevel(logging.INFO)
 
 logging.basicConfig(level=logging.INFO)
@@ -39,9 +14,9 @@ N_requests = 1000
 N_success = 0
 
 for nb_request in range(N_requests):
-    Sr = [random.randint(9, 15) for _ in snoopers]
+    Sr = [20 for _ in range(multi_snooper.TOTAL_SNOOPERS)]
     t0 = timeit.default_timer()
-    packets = multi_snooper.get_messages(Sr, use_callbacks=args.use_callbacks)
+    packets = multi_snooper.get_messages(Sr)
     t1 = timeit.default_timer()
     dt = t1-t0
     times.append(dt)

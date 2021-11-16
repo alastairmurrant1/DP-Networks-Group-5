@@ -25,6 +25,7 @@ from PacketSniper import PacketSniper
 
 # Create parent snooper
 snooper_server = HostedMultiSnooperServer()
+snooper_server.settimeout(2)
 post_server = RealPostServer()
 
 # %% Run our solver against this

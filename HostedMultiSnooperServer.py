@@ -16,6 +16,9 @@ class HostedMultiSnooperServer:
         self.logger = logger or logging.getLogger(__name__)
 
         self.TOTAL_SNOOPERS = self.get_total_snoopers()
+    
+    def settimeout(self, *args, **kwargs):
+        self.sock.settimeout(*args, **kwargs)
 
     # get the total snoopers from the local snooper 
     def get_total_snoopers(self):
