@@ -6,11 +6,10 @@ import argparse
 from RealSnooperServer import RealSnooper
 from MultiSnooperServer import MultiSnooperServer
 
-def decode_request(data):
-    assert len(data) == 24
-
+def decode_request(data, total_snoopers):
+    assert len(data) == total_snoopers*8
     packets = []
-    for i in range(3):
+    for i in range(total_snoopers):
         sub_data = data[i*8:(i+1)*8]
         Sr = int.from_bytes(sub_data[:4], "big")
         Pr = int.from_bytes(sub_data[4:8], "big")
@@ -55,8 +54,8 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
 
     # handle request for array of (Sr, Pr)
     def handle_snooper_request(self, request):
-        packets = decode_request(request)
-        assert len(packets) == self.server.multi_snooper.TOTAL_SNOOPERS
+        total_snoopers = self.server.multi_snooper.TOTAL_SNOOPERS
+        packets = decode_request(request, total_snoopers)
         logging.debug(f"Got packets: {packets}")
 
         Sr_arr = [Sr for Sr, Pr in packets]
