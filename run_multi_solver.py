@@ -36,20 +36,33 @@ from SolverV1_Multi import Solver_V1_Multi as Solver
 from PacketSniper import PacketSniper
 
 # %% Startup the real snooper server
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument("--total-snoopers", default=10, type=int)
+args = parser.parse_args()
 
 # Setup child snoopers
 # run this locally
+snoopers = []
 s0 = RealSnooper()
+s0.settimeout(1)
+snoopers.append(s0)
+
+for _ in range(args.total_snoopers-1):
+    s = RealSnooper()
+    s.settimeout(0.1)
+    snoopers.append(s)
+
 # snooper echos have only 1 response
 # since we don't really have async code, we just collect the responses in order
 # thus the delay from the previous snooper in the list will add up 
-s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
-s1.TOTAL_REPLIES = 1
-s1.settimeout(0.5)
-s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
-s2.TOTAL_REPLIES = 1
-s2.settimeout(0.25)
-snoopers = [s0, s1, s2]
+# s1 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8889)
+# s1.TOTAL_REPLIES = 1
+# s1.settimeout(0.5)
+# s2 = RealSnooper(SERVER_IP_ADDR="localhost", SERVER_PORT=8920)
+# s2.TOTAL_REPLIES = 1
+# s2.settimeout(0.25)
+
 for i, snooper in enumerate(snoopers):
     snooper.logger = logging.getLogger(f"snooper#{i}")
 
