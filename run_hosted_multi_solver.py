@@ -7,7 +7,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--multi-ip-addr", default="localhost")
 parser.add_argument("--multi-port", default=33434, type=int)
 parser.add_argument("--server-ip-addr", default="149.171.36.192")
-parser.add_argument("--server-port", default=8320, type=int)
+parser.add_argument("--server-port", default=8319, type=int)
 parser.add_argument("--dense-guess", action='store_true')
 
 args = parser.parse_args()
