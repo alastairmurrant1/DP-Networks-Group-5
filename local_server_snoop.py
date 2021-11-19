@@ -60,9 +60,8 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
 
         Sr_arr = [Sr for Sr, Pr in packets]
         Pr_arr = [Pr for Sr, Pr in packets]
-        use_callbacks = self.server.env_args.use_callbacks
 
-        packets = self.server.multi_snooper.get_messages(Sr_arr=Sr_arr, Pr_arr=Pr_arr, use_callbacks=use_callbacks)
+        packets = self.server.multi_snooper.get_messages(Sr_arr=Sr_arr, Pr_arr=Pr_arr)
 
         # add Pr back to responses
         responses = []
@@ -78,7 +77,6 @@ class UDPRequestHandler(socketserver.BaseRequestHandler):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--use-callbacks", action="store_true")
     parser.add_argument("--use-feeders", action="store_true")
     parser.add_argument("--total-snoopers", default=3, type=int)
     parser.add_argument("--server-ip-addr", default="149.171.36.192", type=str)
@@ -115,10 +113,7 @@ if __name__ == "__main__":
     for i, snooper in enumerate(snoopers):
         snooper.logger = logging.getLogger(f"snooper#{i}")
         snooper.logger.setLevel(logging.DEBUG)
-        if i == 0:
-            snooper.settimeout(1)
-        else:
-            snooper.settimeout(0.5)
+        snooper.settimeout(1)
     
     multi_snooper = MultiSnooperServer(snoopers)
     multi_snooper.logger.setLevel(logging.DEBUG)
