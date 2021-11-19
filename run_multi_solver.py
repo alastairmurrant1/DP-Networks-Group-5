@@ -6,7 +6,7 @@ import logging
 
 from RealSnooperServer import RealSnooper
 
-file_logger = logging.FileHandler('solver_multi_v1.log')
+file_logger = logging.FileHandler('solver_multi_v1.log', mode='w+')
 console = logging.StreamHandler()
 console.setLevel(logging.DEBUG)
 

@@ -1,7 +1,7 @@
 # %% Setup logger
 import logging
 
-file_logger = logging.FileHandler('solver_v1.log')
+file_logger = logging.FileHandler('solver_v1.log', mode='w+')
 console = logging.StreamHandler()
 console.setLevel(logging.DEBUG)
 

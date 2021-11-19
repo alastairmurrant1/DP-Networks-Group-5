@@ -8,6 +8,7 @@ parser.add_argument("--server-ip-addr", default="149.171.36.192", help="IP addre
 parser.add_argument("--server-port", default=8319, type=int, help="Port of host")
 parser.add_argument("--count", default=10, type=int, help="Number of requests to send")
 parser.add_argument("--max-ping", default=250, type=int, help="Maximum ping in ms before timeout")
+parser.add_argument("--max-retries", default=2, type=int, help="Maximum number of replies to recieve on single request")
 
 args = parser.parse_args()
 
@@ -46,7 +47,7 @@ for i in range(args.count):
     
     sock.send(datagram)
     total_sent += 1
-    while True:
+    for _ in range(args.max_retries):
         try:
             data = sock.recv(1024)
             response_times.append(timeit.default_timer())
