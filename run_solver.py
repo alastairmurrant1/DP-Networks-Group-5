@@ -1,3 +1,13 @@
+# %%
+import argparse
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--server-ip-addr", default="149.171.36.192")
+parser.add_argument("--server-port", default=8320, type=int)
+parser.add_argument("--server-timeout", default=200, type=int)
+
+args = parser.parse_args()
+
 # %% Setup logger
 import logging
 
@@ -8,7 +18,7 @@ console.setLevel(logging.DEBUG)
 formatter = logging.Formatter('%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s', datefmt="%H:%M:%S")
 file_logger.setFormatter(formatter)
 
-logging.basicConfig(handlers=[file_logger, console])
+logging.basicConfig(handlers=[console])
 logging.getLogger().setLevel(logging.DEBUG)
 
 # %% Script for testing our different solvers
@@ -33,9 +43,10 @@ from SolverV1 import Solver_V1 as Solver
 from PacketSniper import PacketSniper
 
 # %% Startup the real snooper server
-snooper = RealSnooper()
+snooper = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
+snooper.settimeout(float(args.server_timeout) / 1000)
 snooper.logger.setLevel(logging.INFO)
-post_server = RealPostServer(SERVER_PORT=snooper.SERVER_PORT+1)
+post_server = RealPostServer(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port+1)
 
 # %% Startup a test server
 # snooper = TestSnooper([

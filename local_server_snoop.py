@@ -81,6 +81,7 @@ if __name__ == "__main__":
     parser.add_argument("--total-snoopers", default=3, type=int)
     parser.add_argument("--server-ip-addr", default="149.171.36.192", type=str)
     parser.add_argument("--server-port", default=8319, type=int)
+    parser.add_argument("--server-timeout", default=200, type=int)
 
     args = parser.parse_args()
 
@@ -113,7 +114,7 @@ if __name__ == "__main__":
     for i, snooper in enumerate(snoopers):
         snooper.logger = logging.getLogger(f"snooper#{i}")
         snooper.logger.setLevel(logging.DEBUG)
-        snooper.settimeout(1)
+        snooper.settimeout(args.server_timeout / 1000)
     
     multi_snooper = MultiSnooperServer(snoopers)
     multi_snooper.logger.setLevel(logging.DEBUG)
