@@ -1,5 +1,4 @@
 import socket
-import socketserver
 import logging
 import argparse
 
@@ -31,49 +30,44 @@ def encode_responses(responses):
     
     return lengths + data
 
+# handle request for number of snoopers running 
+def handle_total_snoopers_request(total_snoopers):
+    return int.to_bytes(total_snoopers, 4, "big")
 
-class UDPRequestHandler(socketserver.BaseRequestHandler):
-    def handle(self):
-        request = self.request[0]
-        client_socket = self.request[1]
+# handle request for array of (Sr, Pr)
+def handle_snooper_request(request, multi_snooper):
+    total_snoopers = multi_snooper.TOTAL_SNOOPERS
+    packets = decode_request(request, total_snoopers)
+    logging.debug(f"Got packets: {packets}")
 
-        logging.debug(f"Got request from {self.client_address}")
+    Sr_arr = [Sr for Sr, Pr in packets]
+    Pr_arr = [Pr for Sr, Pr in packets]
 
-        if request == int("DEADBEEFDEADBEEF", 16).to_bytes(8, "big"):
-            logging.info(f"Replying with total_snoopers={self.server.multi_snooper.TOTAL_SNOOPERS}")
-            response_datagram = self.handle_total_snoopers_request(request)
+    packets = multi_snooper.get_messages(Sr_arr=Sr_arr, Pr_arr=Pr_arr)
+
+    # add Pr back to responses
+    responses = []
+    for Pr, packet in zip(Pr_arr, packets):
+        if packet is None:
+            responses.append(None)
         else:
-            response_datagram = self.handle_snooper_request(request)
+            msg_id, msg = packet
+            responses.append((Pr, msg_id, msg))
 
-        client_socket.sendto(response_datagram, self.client_address)
+    response_datagram = encode_responses(responses)
+    return response_datagram
 
-    # handle request for number of snoopers running 
-    def handle_total_snoopers_request(self, request):
-        total_snoopers = self.server.multi_snooper.TOTAL_SNOOPERS
-        return int.to_bytes(total_snoopers, 4, "big")
+def handle_request(request, sock, addr, multi_snooper):
+    logging.debug(f"Got request from {addr}")
 
-    # handle request for array of (Sr, Pr)
-    def handle_snooper_request(self, request):
-        total_snoopers = self.server.multi_snooper.TOTAL_SNOOPERS
-        packets = decode_request(request, total_snoopers)
-        logging.debug(f"Got packets: {packets}")
+    if request == int("DEADBEEFDEADBEEF", 16).to_bytes(8, "big"):
+        logging.info(f"Replying with total_snoopers={multi_snooper.TOTAL_SNOOPERS}")
+        response_datagram = handle_total_snoopers_request(multi_snooper.TOTAL_SNOOPERS)
+    else:
+        response_datagram = handle_snooper_request(request, multi_snooper)
 
-        Sr_arr = [Sr for Sr, Pr in packets]
-        Pr_arr = [Pr for Sr, Pr in packets]
+    sock.sendto(response_datagram, addr)
 
-        packets = self.server.multi_snooper.get_messages(Sr_arr=Sr_arr, Pr_arr=Pr_arr)
-
-        # add Pr back to responses
-        responses = []
-        for Pr, packet in zip(Pr_arr, packets):
-            if packet is None:
-                responses.append(None)
-            else:
-                msg_id, msg = packet
-                responses.append((Pr, msg_id, msg))
-
-        response_datagram = encode_responses(responses)
-        return response_datagram
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -94,13 +88,9 @@ if __name__ == "__main__":
     # use external snooping servers
     # NOTE: Use this in production
     if args.use_feeders:
-        # run this locally
         s0 = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
-        # snooper echos have only 1 response
         s1 = RealSnooper(SERVER_IP_ADDR="34.87.197.254", SERVER_PORT=8889)
-        s1.TOTAL_REPLIES = 1
         s2 = RealSnooper(SERVER_IP_ADDR="34.116.69.217", SERVER_PORT=8920)
-        s2.TOTAL_REPLIES = 1
         snoopers = [s0,s1,s2]
     # use servers on same thread
     # NOTE: Cannot use this in production
@@ -119,14 +109,18 @@ if __name__ == "__main__":
     multi_snooper = MultiSnooperServer(snoopers)
     multi_snooper.logger.setLevel(logging.DEBUG)
 
-    server = socketserver.UDPServer((HOST_SERV, PORT_SERV), UDPRequestHandler)
-    server.multi_snooper = multi_snooper
-    server.env_args = args
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.bind((HOST_SERV, PORT_SERV))
 
-    try:
-        logging.info(f"Starting local snooping server on {HOST_SERV}:{PORT_SERV}") 
-        server.serve_forever()
-    except KeyboardInterrupt:
-        server.shutdown()
-        server.server_close()
-        
+    logging.info(f"Starting server at {HOST_SERV}:{PORT_SERV}")
+    while True:
+        try:
+            data, addr = sock.recvfrom(1024)
+            if not data:
+                logging.info(f"Client {addr} disconnected")
+                break
+            
+            handle_request(data, sock, addr, multi_snooper)
+        except socket.timeout:
+            logging.warning(f"Timed out")
+    

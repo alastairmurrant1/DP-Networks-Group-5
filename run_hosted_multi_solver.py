@@ -8,6 +8,7 @@ parser.add_argument("--multi-ip-addr", default="localhost")
 parser.add_argument("--multi-port", default=33434, type=int)
 parser.add_argument("--server-ip-addr", default="149.171.36.192")
 parser.add_argument("--server-port", default=8320, type=int)
+parser.add_argument("--dense-guess", action='store_true')
 
 args = parser.parse_args()
 
@@ -22,6 +23,7 @@ console.setLevel(logging.DEBUG)
 
 formatter = logging.Formatter('%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s', datefmt="%H:%M:%S")
 file_logger.setFormatter(formatter)
+console.setFormatter(formatter)
 
 logging.basicConfig(handlers=[console])
 logging.getLogger().setLevel(logging.DEBUG)
@@ -46,7 +48,7 @@ while True:
     solver = Solver(snooper_server, snipers)
     solver.logger.setLevel(logging.DEBUG)
     
-    final_msg = solver.run(sparse_guess=True)
+    final_msg = solver.run(sparse_guess=not args.dense_guess)
     messages.append(final_msg)
 
     res = post_server.post_message(final_msg)

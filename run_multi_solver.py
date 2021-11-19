@@ -30,6 +30,7 @@ parser.add_argument("--total-snoopers", default=3, type=int)
 parser.add_argument("--server-ip-addr", default="149.171.36.192")
 parser.add_argument("--server-port", default=8320, type=int)
 parser.add_argument("--server-timeout", default=200, type=int)
+parser.add_argument("--dense-guess", action='store_true')
 
 args = parser.parse_args()
 
@@ -67,7 +68,7 @@ while True:
     solver = Solver(snooper_server, snipers)
     solver.logger.setLevel(logging.DEBUG)
     
-    final_msg = solver.run(sparse_guess=True)
+    final_msg = solver.run(sparse_guess=not args.dense_guess)
     messages.append(final_msg)
 
     res = post_server.post_message(final_msg)

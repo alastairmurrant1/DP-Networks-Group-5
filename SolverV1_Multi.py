@@ -64,7 +64,8 @@ class Solver_V1_Multi:
     # greedy search the best Cr to snipe a packet
     def get_Crs(self):
         # RANDOM_RANGE = (1,2)
-        RANDOM_RANGE = (11,20)
+        # RANDOM_RANGE = (11,20)
+        RANDOM_RANGE = (7, 12)
 
         # random search if cant snipe
         if not self.LAST_ID:
@@ -77,9 +78,11 @@ class Solver_V1_Multi:
 
     def greedy_snipe(self, snooper_index): 
         hop_scores = []
-        for hop in range(7,100):
+        # for hop in range(7,100):
+        for hop in range(7, 20):
             score = self.get_sniping_score(self.LAST_ID+hop, snooper_index)
-            sort_val = score*1000 - abs(hop-random.randint(12,40))
+            # sort_val = score*1000 - abs(hop-random.randint(12,40))
+            sort_val = score*1000 - abs(hop-random.randint(11,13))
             hop_scores.append((sort_val, score, hop))
         
         _, best_score, best_hop = max(hop_scores, key=lambda h:h[0])
