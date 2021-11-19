@@ -2,7 +2,7 @@ from create_snooper_feeder import create_snooper_feeder
 import logging
 
 #This server address & port
-HOST,PORT = "localhost",8920
+HOST,PORT = "0.0.0.0",8920
 logging.basicConfig(level=logging.DEBUG)
 
 try:
