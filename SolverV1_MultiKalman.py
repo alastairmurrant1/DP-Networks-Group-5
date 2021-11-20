@@ -1,9 +1,9 @@
 import random
-import socket
 import logging
 from timeit import default_timer
-import numpy as np
-from collections import deque
+from KalmanChannel import KalmanChannel
+
+import threading
 
 # https://stackoverflow.com/questions/6800193/what-is-the-most-efficient-way-of-finding-all-the-factors-of-a-number-in-python
 from functools import reduce
@@ -12,23 +12,22 @@ def factors(n):
 
 from PossibleMessage import PossibleMessage, ChunkConflict, EOFMismatch
 
-class Solver_V1_Kalman:
-    def __init__(self, snooper, sniper, rate, logger=None):
-        self.snooper = snooper
-        self.sniper = sniper
+class Solver_V1_MultiKalman:
+    def __init__(self, snoopers, snipers, rate, logger=None):
+        self.channels = []
+        for i, (snooper, sniper) in enumerate(zip(snoopers, snipers)):
+            logger = logging.getLogger(f"channel#{i}")
+            channel = KalmanChannel(snooper, sniper, logger)
+            self.channels.append(channel)
 
         # Maximum possible number of packets in potential message
         self.MAX_PACKETS = 5000//4
-        # Number of retries to snooper before giving up
-        self.MAX_RETRIES = 10
         # If we are using dense guessing, determine threshold before we start
         # to use greedy sniping
         self.DENSE_GUESS_THRESHOLD = 100
 
         self.logger = logger or logging.getLogger(__name__)
         
-        
-        self.total_requests = 0
         self.all_packets = []
         self.unique_packets = set([])
         self.EOF_packets = []
@@ -42,7 +41,10 @@ class Solver_V1_Kalman:
         self.pk = 0
         self.t_prev_update = 0
         self.CHAR_RATE = rate
-        self.dt_prev_rx = deque([], maxlen=10)
+
+        self.snoop_lock = threading.Lock()
+        self.snoop_count = threading.Semaphore(0)
+        self.IS_THREAD_RUNNING = True
         
         # store all the potential messages
         # key = length of potential message
@@ -51,34 +53,36 @@ class Solver_V1_Kalman:
     
     # get score if we attempt to snipe a particular location
     # we know the probability of an offset occuring
-    def get_sniping_score(self, target_id):
+    def get_sniping_score(self, target_id, sniper):
         index = target_id-self.STARTER_ID
-        return self.sniper.get_score(self.possible_messages, index)
+        return sniper.get_score(self.possible_messages, index, N=7)
     
     # get the actual score
     def get_actual_score(self, target_id):
-        score = 0
-        for message in self.possible_messages:
-            i = target_id-self.STARTER_ID
-            if message[i] is None:
-                score += 1
-        return score
+        with self.snoop_lock:
+            score = 0
+            for message in self.possible_messages:
+                i = target_id-self.STARTER_ID
+                if message[i] is None:
+                    score += 1
+            return score
         
     # greedy search the best Cr to snipe a packet
-    def get_Cr(self, id):
-        # random search if cant snipe
-        if not self.LAST_ID:
+    def get_Cr(self, id, sniper):
+        with self.snoop_lock:
+            # random search if cant snipe
+            if not self.LAST_ID:
+                return random.randint(8,12)
+
+            if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
+                return self.greedy_snipe(id, sniper)
+            
             return random.randint(8,12)
 
-        if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
-            return self.greedy_snipe(id)
-        
-        return random.randint(8,12)
-
-    def greedy_snipe(self, id): 
+    def greedy_snipe(self, id, sniper): 
         hop_scores = []
         for hop in range(7,20):
-            score = self.get_sniping_score(id+hop)
+            score = self.get_sniping_score(id+hop, sniper)
             sort_val = score*1000 - abs(hop-10)
             hop_scores.append((sort_val, score, hop))
         
@@ -104,6 +108,11 @@ class Solver_V1_Kalman:
             end_ids = ids[i+1:]
             for end_id in end_ids:
                 lengths.append(end_id-start_id)
+        
+        lengths = set([L for L in lengths if L != 0])
+        if len(lengths) == 0:
+            self.logger.warning("Ran out of factors, possibly complete")
+            return
 
         lengths = set.intersection(*[set(factors(n)) for n in lengths])
 
@@ -199,24 +208,25 @@ class Solver_V1_Kalman:
 
     # guess the number of packets required to fulfill character count 
     def get_known_total_chars(self, start_id, char_count, default=12):
-        i = start_id - self.STARTER_ID
-        message = list(self.possible_messages)[-1]
-        
-        total_unknown = 0
-        total_known = 0
-        total_char = 0
+        with self.snoop_lock:
+            i = start_id - self.STARTER_ID
+            message = list(self.possible_messages)[-1]
+            
+            total_unknown = 0
+            total_known = 0
+            total_char = 0
 
-        while total_char < char_count:
-            i += 1
-            chunk = message[i]
-            if chunk is None:
-                total_char += default
-                total_unknown += 1
-            else:
-                total_char += len(chunk)
-                total_known += 1
+            while total_char < char_count:
+                i += 1
+                chunk = message[i]
+                if chunk is None:
+                    total_char += default
+                    total_unknown += 1
+                else:
+                    total_char += len(chunk)
+                    total_known += 1
 
-        return (total_known, total_unknown)
+            return (total_known, total_unknown)
 
     # return progress of each message as dictionary of
     # {k:v} where k=length, v=#chunks
@@ -239,109 +249,56 @@ class Solver_V1_Kalman:
 
         self.LAST_ID = msg_id
         self.t_prev_update = t1
+    
+    def spawn_channel_thread(self, channel: KalmanChannel):
+        msg_id, msg, t_rx = channel.seed(self.CHAR_RATE)
 
+        with self.snoop_lock:
+            self.on_message(msg_id, msg)
+            self.snoop_count.release()
+            if self.LAST_ID is None or self.LAST_ID < msg_id:
+                self.LAST_ID = msg_id
+                self.t_prev_update = t_rx
+        
+        # infinite loop while running
+        while self.IS_THREAD_RUNNING:
+            res = channel.run(self.CHAR_RATE, self.LAST_ID, self.pk, self.t_prev_update, self)
+            if res is None:
+                continue
+
+            msg_id, msg, t_update, xk_next, pk_next = res
+
+            with self.snoop_lock:
+                self.on_message(msg_id, msg)
+                self.snoop_count.release()
+                if self.LAST_ID < xk_next:
+                    self.LAST_ID = xk_next
+                    self.pk = pk_next
+                    self.t_prev_update = t_update
         
     def run(self):
         self.logger.debug(f"Starting solver run")
         self.logger.info(f"Starting dense guesses from 1 to {self.MAX_PACKETS}")
         self.get_all_guesses()
-        self.seed()
+
+        threads = [threading.Thread(target=self.spawn_channel_thread, args=[channel]) for channel in self.channels]
+        for thread in threads:
+            thread.start()
 
         while True:
-            final_msg = self.check_completed_messages()
+            self.snoop_count.acquire()
+
+            with self.snoop_lock:
+                final_msg = self.check_completed_messages()
+
             if final_msg is not None:
+                self.IS_THREAD_RUNNING = False
+                
+                for thread in threads:
+                    thread.join()
+                
                 return final_msg
             
             # if len(self.possible_messages) < 15:
             #     self.logger.debug(f"Progress {self.progress} @ {self.total_requests}")
                 
-            rate = self.CHAR_RATE
-            xk = self.LAST_ID
-            pk = self.pk
-            t_prev_update = self.t_prev_update
-            snooper = self.snooper
-
-            # compensation for transmission latency
-            avg_tx = np.array(list(self.dt_prev_rx)).mean()
-            t0 = default_timer()
-            dt_delay_1 = t_prev_update - t0
-            T_estim = (avg_tx + dt_delay_1) * rate
-
-            # T_estim = avg_tx * rate
-            t0 = default_timer()
-            dxk_known, dxk_unknown = self.get_known_total_chars(int(xk), T_estim)
-            t1 = default_timer()
-            dt_compute = t1-t0
-
-            dxk_uncertain = dxk_unknown + (dt_compute*rate)/12
-            dxk = dxk_known + dxk_uncertain 
-            # dxk = T_estim / 12
-
-            # Sr = random.randint(8, 12) 
-            Sr = self.get_Cr(int(xk + dxk))
-
-            snipe_id = xk + dxk + Sr
-            snipe_id = int(snipe_id)
-
-            sniper_sd = 0.41*(dxk_uncertain**0.5)
-
-            try:
-                t0 = default_timer()
-                msg_id, msg = snooper.get_message(Sr)
-                self.total_requests += 1
-                t1 = default_timer()
-                rtt = t1-t0
-            except socket.timeout:
-                continue
-
-            snipe_error = msg_id - snipe_id
-
-            t_since_last = t1 - t_prev_update
-            self.t_prev_update = t1
-
-            # state propagation
-            C1 = rate * t_since_last
-            dxk_known, dxk_unknown = self.get_known_total_chars(int(xk), C1)
-            N1 = dxk_known + dxk_unknown
-
-            sd1 = 0.41*(dxk_unknown**0.5)
-            covar1 = sd1**2
-
-            # our observation error
-            dt_Sr = rtt - (Sr*12)/rate
-            dt_rx = dt_Sr/2
-            self.dt_prev_rx.append(dt_rx)
-
-            C2 = dt_rx * rate
-            dxk_known, dxk_unknown = self.get_known_total_chars(msg_id, C2)
-            N2 = dxk_known + dxk_unknown
-
-            # standard deviation of observation depends on packet distance
-            sd2 = 0.41*(dxk_unknown**0.5)
-            covar2 = sd2**2
-
-            zk = msg_id + N2
-
-            xk_pred = xk + N1
-            pk_pred = pk + covar1
-
-            ek = zk-xk_pred
-            self.logger.debug(f"{self.total_requests}:xk_pred={xk_pred % 1000:.2f} zk={zk % 1000:.2f} kf_error={ek:.2f} snipe_error={snipe_error} | {sniper_sd:.1f}")
-            # print(f"\r{self.total_requests}: xk_pred={xk_pred % 1000:.2f} zk={zk % 1000:.2f} kf_error={ek:.2f} snipe_error={snipe_error} | {sniper_sd:.1f}" + " "*10, end="")
-
-            if covar2 != 0 or pk_pred != 0:
-                Kk = pk_pred/(pk_pred + covar2)
-            else:
-                Kk = 1
-
-            xk_next = xk_pred + Kk*(zk - xk_pred)
-            pk_next = (1-Kk)*pk_pred
-
-            xk = xk_next
-            pk = pk_next
-
-            self.LAST_ID = xk
-            self.pk = pk
-
-            self.on_message(msg_id, msg)
-            self.sniper.push_error(snipe_error)

@@ -46,9 +46,9 @@ class RealSnooper:
                     break
             except socket.timeout as ex:
                 if msg_id is not None:
-                    self.logger.error(f"Timeout with mismatching Pr (sent {Pr}, got {Pt})")
+                    self.logger.warning(f"Timeout with mismatching Pr (sent {Pr}, got {Pt})")
                 else:
-                    self.logger.error(f"Timeout without reply")
+                    self.logger.warning(f"Timeout without reply")
                 raise ex
         
         assert Pr == Pt
