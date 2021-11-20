@@ -15,7 +15,7 @@ class Solver_V1:
         self.sniper = sniper
 
         # Maximum possible number of packets in potential message
-        self.MAX_PACKETS = 5000//4
+        self.MAX_PACKETS = 500 # Based on probability distribution of possible total packets, highly unlikely to be above 500
         # Number of retries to snooper before giving up
         self.MAX_RETRIES = 10
         # If we are using dense guessing, determine threshold before we start

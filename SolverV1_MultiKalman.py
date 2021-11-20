@@ -26,7 +26,7 @@ class Solver_V1_MultiKalman:
             self.channels.append(channel)
 
         # Maximum possible number of packets in potential message
-        self.MAX_PACKETS = 5000//4
+        self.MAX_PACKETS = 500 # Based on probability distribution of possible total packets, highly unlikely to be above 500
         # If we are using dense guessing, determine threshold before we start
         # to use greedy sniping
         self.DENSE_GUESS_THRESHOLD = 100

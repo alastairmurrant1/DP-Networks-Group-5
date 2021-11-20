@@ -54,10 +54,10 @@ except socket.timeout:
 # %%
 import numpy as np
 import random
-
-packets = []
+import matplotlib.pyplot as plt
 
 # %%
+packets = []
 Sr = random.randint(8, 12)
 Pr = random.randint(1, 1 << 31)
 
@@ -78,7 +78,6 @@ for _ in range(10000):
 # %%
 L = np.array([len(rx[2]) for rx in packets])
 
-import matplotlib.pyplot as plt
 plt.hist(L)
 
 
@@ -108,8 +107,9 @@ plt.legend()
 # plt.axvline(N*12, color="r")
 
 # %%
-for C in np.array([1,2,3,5,10,20,30,100])*12:
-    nb_samples = 1000
+# for C in np.array([1,2,3,5,10,20,30,100])*12:
+for C in np.array([5000]):
+    nb_samples = 10000
     c = np.zeros((nb_samples, 1))
     x = np.zeros((nb_samples, 1))
 
