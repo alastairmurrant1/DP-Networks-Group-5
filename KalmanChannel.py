@@ -15,10 +15,15 @@ class KalmanChannel:
     # get first response to seed priors
     def seed(self, rate):
         Sr = 10
-        t0 = default_timer()
-        msg_id, msg = self.snooper.get_message(Sr)
+        while True:
+            try:
+                t0 = default_timer()
+                msg_id, msg = self.snooper.get_message(Sr)
+                t1 = default_timer()
+                break
+            except socket.timeout:
+                continue
         self.total_requests += 1
-        t1 = default_timer()
 
         rtt = t1-t0
         dt_rx = rtt - (Sr*12)/rate
