@@ -72,7 +72,7 @@ post_server = RealPostServer(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=arg
 
 # %% Run our solver against this
 messages = []
-snipers = [PacketSniper(maxlen=10) for _ in range(3)]
+snipers = [PacketSniper(maxlen=10) for _ in range(args.total_snoopers)]
 
 logging.info(f"Starting solve with rate={args.server_rate}")
 

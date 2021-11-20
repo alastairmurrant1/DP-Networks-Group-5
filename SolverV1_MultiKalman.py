@@ -12,6 +12,11 @@ def factors(n):
 
 from PossibleMessage import PossibleMessage, ChunkConflict, EOFMismatch
 
+class OngoingSnipe:
+    def __init__(self, target_id, pdf):
+        self.target_id = target_id
+        self.pdf = pdf
+
 class Solver_V1_MultiKalman:
     def __init__(self, snoopers, snipers, rate, logger=None):
         self.channels = []
@@ -50,12 +55,57 @@ class Solver_V1_MultiKalman:
         # key = length of potential message
         # value = PossibleMessage object
         self.possible_messages = set([])
+
+        # store the probability density functions of ongoing requests
+        # this way new sniping attempts will avoid overlapping an existing pdf
+        self.ongoing_snipes = set([])
+    
+    # let channel submit a sniping request
+    def submit_ongoing_snipe(self, target_id, pdf):
+        with self.snoop_lock:
+            snipe = OngoingSnipe(target_id, pdf)
+            self.ongoing_snipes.add(snipe)
+            assert len(self.ongoing_snipes) <= len(self.channels)
+            # self.logger.debug(f"Total ongoing snipes={len(self.ongoing_snipes)}")
+            return snipe
+    
+    # removes an ongoing snipe
+    def remove_ongoing_snipe(self, snipe):
+        with self.snoop_lock:
+           self.ongoing_snipes.remove(snipe) 
     
     # get score if we attempt to snipe a particular location
     # we know the probability of an offset occuring
-    def get_sniping_score(self, target_id, sniper):
-        index = target_id-self.STARTER_ID
-        return sniper.get_score(self.possible_messages, index, N=7)
+    def get_sniping_score(self, target_id, pdf):
+        new_snipe = OngoingSnipe(target_id, pdf)
+        combined_snipes = [*list(self.ongoing_snipes), new_snipe]
+
+        score = 0
+        for m in self.possible_messages:
+            N = len(m)
+
+            combined_pdf = {}
+            for snipe in combined_snipes:
+                for error, proba in snipe.pdf:
+                    i = (snipe.target_id - self.STARTER_ID + error) % N
+                    combined_pdf.setdefault(i, 0)
+                    combined_pdf[i] += proba
+
+            for i, proba in combined_pdf.items():
+                if m[i] is not None:
+                    continue
+
+                # if we have a chance of hitting a missing packet
+                # add to our sniping score
+                # we want to penalise snipes that are strongly overlapping with an existing 
+                PROBA_THRESH = 0.7
+                PROBA_PENALTY = 0.2
+                if proba > PROBA_THRESH:
+                    proba = PROBA_THRESH + PROBA_PENALTY*(proba-PROBA_THRESH)
+                    proba = min(1, proba)
+                score += proba
+
+        return score
     
     # get the actual score
     def get_actual_score(self, target_id):
@@ -81,14 +131,15 @@ class Solver_V1_MultiKalman:
 
     def greedy_snipe(self, id, sniper): 
         hop_scores = []
+        pdf = sniper.get_truncated_pdf(N=8)
         for hop in range(7,20):
-            score = self.get_sniping_score(id+hop, sniper)
+            score = self.get_sniping_score(id+hop, pdf)
             sort_val = score*1000 - abs(hop-10)
             hop_scores.append((sort_val, score, hop))
         
         _, best_score, best_hop = max(hop_scores, key=lambda h:h[0])
         
-        # self.logger.debug(f"Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
+        # self.logger.debug(f"Sniping for {(id+best_hop) % 1000} with hop={best_hop} score={best_score:.2f}")
         return best_hop
 
     # calculate factors and update possible messages 
@@ -299,6 +350,6 @@ class Solver_V1_MultiKalman:
                 
                 return final_msg
             
-            # if len(self.possible_messages) < 15:
-            #     self.logger.debug(f"Progress {self.progress} @ {self.total_requests}")
+            if len(self.possible_messages) < 15:
+                self.logger.debug(f"Progress {self.progress}")
                 

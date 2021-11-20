@@ -61,11 +61,14 @@ class KalmanChannel:
         snipe_id = xk + dxk + Sr
         snipe_id = int(snipe_id)
 
+
         # NOTE: For a sequence of N packets, this is the uncertainty in the total character length of all packets
         # std = 0.41*sqrt(N)
         sniper_sd = 0.41*(dxk_uncertain**0.5)
 
         # STEP 3: Perform the snipe and record error and times
+        # Submit to solver so that it can track it as ongoing
+        ongoing_snipe = solver.submit_ongoing_snipe(snipe_id, self.sniper.get_truncated_pdf(N=8))
         try:
             t0 = default_timer()
             msg_id, msg = snooper.get_message(Sr)
@@ -73,8 +76,12 @@ class KalmanChannel:
             t1 = default_timer()
             rtt = t1-t0
         except socket.timeout:
+            # remove snipe if it timed out
+            solver.remove_ongoing_snipe(ongoing_snipe)
             return
-
+        
+        # after snipe is done, retract sniping submission
+        solver.remove_ongoing_snipe(ongoing_snipe)
         snipe_error = msg_id - snipe_id
         t_since_last = t1 - t_prev_update
 
@@ -111,7 +118,7 @@ class KalmanChannel:
         pk_pred = pk + Qk
 
         ek = zk-xk_pred
-        self.logger.debug(f"{self.total_requests}:xk_pred={xk_pred % 1000:.2f} zk={zk % 1000:.2f} kf_error={ek:.2f} msg_id={msg_id % 1000:.0f} snipe_target={snipe_id % 1000:.0f} snipe_error={snipe_error} | {sniper_sd:.1f}")
+        self.logger.debug(f"{self.total_requests}:xk_pred={xk_pred % 1000:.2f} zk={zk % 1000:.2f} kf_error={ek:.2f} msg_id={msg_id % 1000:.0f} snipe_target={snipe_id % 1000:.0f} snipe_error={snipe_error} | {sniper_sd:.1f} rtt={rtt*1000:.0f}ms")
         # print(f"\rchannel#{self.id}:{self.total_requests}: xk_pred={xk_pred % 1000:.2f} zk={zk % 1000:.2f} kf_error={ek:.2f} snipe_error={snipe_error} | {sniper_sd:.1f}" + " "*10, end="")
 
         # STEP 7: Kalman filter: Calculate our kalman gain using Rk from Step 5
