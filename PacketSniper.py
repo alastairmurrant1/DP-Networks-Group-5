@@ -23,8 +23,6 @@ class PacketSniper:
         self.counts[error] += 1
         self.countsTimes.append(time.time())
 
-        #self.countsTimes[error]=time.time()
-
 
        # print(f"N before: {len(self.errors)}")
        #gets a time window of 1 sec and observes all errors in last 1 sec
@@ -47,32 +45,13 @@ class PacketSniper:
         N = self.nb_snipes
         return {k:v/N for k,v in self.net_counts.items()}
 
-    @property
-    def time_PDF(self, t=1):
-        newCounts = Counter([])
-        for item in self.countsTimes.keys():
-            if (time.time()-item < t):
-                newCounts[self.countsTimes.get(item)]+=1
-
-            else :
-                self.countsTimes.popleft()
-            
-        
-        return {k:v/N for k,v in newCounts.items() }
-    
-    # get the most likely over 1 sec time probabilities
-    #def get_over_range_pdf(self, N=5):
-       # pdf = list(self.time_PDF(t=1).items())
-
-        #pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
-        #return pdf[:N]
+   
 
     # get the most likely probabilities
     def get_truncated_pdf(self, N=5):
         pdf = list(self.PDF.items())
         pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
         return pdf[:N]
-
 
     # index = offset we are sniping at
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
