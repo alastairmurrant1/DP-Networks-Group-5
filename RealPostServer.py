@@ -5,6 +5,7 @@ class RealPostServer:
     def __init__(self, SERVER_IP_ADDR="149.171.36.192", SERVER_PORT=8320):
         self.SERVER_IP_ADDR = SERVER_IP_ADDR
         self.SERVER_PORT = SERVER_PORT
+        self.TOTAL_RETRIES = 5
 
         self.logger = logging.getLogger(__name__)
 
@@ -46,12 +47,16 @@ class RealPostServer:
 
         request = self.construct_post_request_body(message, headers=headers)
         n = sock.send(bytes(request, "utf-8"))
+
+        for i in range(self.TOTAL_RETRIES): 
+            try:
+                data = sock.recv(1024)
+                res = self.decode_post_response(data)
+                sock.close()
+                return res
+            except socket.timeout:
+                self.logger.warning(f"Time out#{i}")
+                continue
         
-        try:
-            data = sock.recv(1024)
-            res = self.decode_post_response(data)
-            return res
-        except socket.timeout:
-            return None
-        finally:
-            sock.close()
+        self.logger.error(f"Timed out after {self.TOTAL_RETRIES} retries")
+        raise socket.timeout()
