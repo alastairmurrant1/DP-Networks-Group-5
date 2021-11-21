@@ -21,17 +21,24 @@ class PacketSniper:
     def push_error(self, error):
         self.errors.append(error)
         self.counts[error] += 1
-        self.countsTimes.append((time.time(), error))
+        self.countsTimes.append(time.time())
 
         #self.countsTimes[error]=time.time()
 
         if len(self.errors) > self.maxlen:
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
-            #self.countsTimes[error].delete()
+            self.countsTimes[error].delete()
             self.countsTimes.popleft()
-
+       # print(f"N before: {len(self.errors)}")
+        #out = self.countsTimes.popleft()
+        #while (time.time() - out > 1):
+            #del_error = self.errors.popleft()
+            #self.counts[del_error] -= 1
+            #out = self.countsTimes.popleft()
         
+        #self.countsTimes.appendleft(out)
+        print(f"N after: {len(self.errors)}")
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
 
@@ -57,11 +64,11 @@ class PacketSniper:
         return {k:v/N for k,v in newCounts.items() }
     
     # get the most likely over 1 sec time probabilities
-    def get_over_range_pdf(self, N=5):
-        pdf = list(time_PDF(self).items())
+    #def get_over_range_pdf(self, N=5):
+       # pdf = list(self.time_PDF(t=1).items())
 
-        pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
-        return pdf[:N]
+        #pdf = sorted(pdf, key=lambda x:x[1], reverse=True)
+        #return pdf[:N]
 
     # get the most likely probabilities
     def get_truncated_pdf(self, N=5):
