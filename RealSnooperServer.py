@@ -1,6 +1,7 @@
 import socket
 import random
 import logging
+from timeit import default_timer
 
 # To setup the server we do the following
 # 1. SSH via 'ssh -X np14@149.171.36.192'
@@ -8,62 +9,74 @@ import logging
 # 3. Run the command '4123-server -address 0.0.0.0 -port 8319 -file message.txt'
 
 class RealSnooper:
-    def __init__(self, SERVER_IP_ADDR="149.171.36.192", SERVER_PORT=8319, SERVER_AUTH_PORT=None):
+    def __init__(self, SERVER_IP_ADDR="149.171.36.192", SERVER_PORT=8319):
         self.SERVER_IP_ADDR = SERVER_IP_ADDR
         self.SERVER_PORT = SERVER_PORT
 
-        if SERVER_AUTH_PORT is None:
-            SERVER_AUTH_PORT = SERVER_PORT+1
-        self.SERVER_AUTH_PORT = SERVER_AUTH_PORT
-
-        self.packet_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.packet_sock.settimeout(2)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.settimeout(2)
 
         self.logger = logging.getLogger(__name__)
 
-        # if we get duplicates for some reason
-        self.TOTAL_REPLIES = 2
+        self.sock.connect((self.SERVER_IP_ADDR, self.SERVER_PORT))
+    
+    def settimeout(self, *args, **kwargs):
+        self.sock.settimeout(*args, **kwargs)
     
     def close(self):
-        self.packet_sock.close()
+        self.sock.close()
+    
+    def _fetch_message(self, Pr, time_sent):
+        # run through responses until we get our desired packet
+        # duplication or packet losses can occur, which causes this to go out of sync
+        msg_id = None
 
+        while True: 
+            try:
+                data = self.sock.recv(1024)
+
+                # check if last packet contained correct Pr
+                try:
+                    Pt, msg_id, msg = self.decode_packet_response(data)
+                except ValueError:
+                    self.logger.error(f"Failed to decode packet: len={len(data)} content={data}")
+                    raise socket.timeout()
+
+                if Pt == Pr:
+                    break
+            except socket.timeout as ex:
+                if msg_id is not None:
+                    self.logger.warning(f"Timeout with mismatching Pr (sent {Pr}, got {Pt})")
+                else:
+                    self.logger.warning(f"Timeout without reply")
+                raise ex
+        
+        assert Pr == Pt
+
+        time_gotten = default_timer()
+        rtt = time_gotten - time_sent
+        self.logger.debug(f"Matching reply rtt={rtt*1000:.0f}ms (sent {Pr}, got {Pt})")
+        return (msg_id, msg)
+    
     # get a message from the server with our desired Sr 
-    def get_message(self, Sr, Pr=None):
+    def get_message(self, Sr, Pr=None, return_callback=False):
         if Pr is None:
             Pr = random.randint(1, 1 << 31)
 
         datagram = self.construct_packet_request(Sr, Pr)
-        self.packet_sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
-
-        # run through responses until we get our desired packet
-        msg_id = None
-        while True: 
-            try:
-                # receive duplicates
-                for _ in range(self.TOTAL_REPLIES):
-                    data = self.packet_sock.recv(1024)
-                
-                # check if last packet contained correct Pr
-                Pt, msg_id, msg = self.decode_packet_response(data)
-                if Pt == Pr:
-                    break
-                else:
-                    self.logger.warn(f"Mismatching Pr (sent {Pr}, got {Pt})")
-            except socket.timeout as ex:
-                # if no previous replies, then raise timeout error
-                if msg_id is None:
-                    raise ex
-                break
+        # self.sock.sendto(datagram, (self.SERVER_IP_ADDR, self.SERVER_PORT))
         
-        return (msg_id, msg)
+        time_sent = default_timer()
+        self.sock.send(datagram)
 
-    # post final message to server
-    # # returns the status code 
-    def post_message(self, message):
-        headers = {"Connection": "close"} # close the tcp connection when done
-        message = message + chr(0x04)
-        res = self.send_post_request(message, headers=headers)
-        return res
+        if not return_callback:
+            return self._fetch_message(Pr, time_sent)
+        
+        def callback():
+            return self._fetch_message(Pr, time_sent)
+
+        return callback
+
 
     def construct_packet_request(self, Sr, Pr):
         return Sr.to_bytes(4, byteorder="big") + Pr.to_bytes(4, byteorder="big")
@@ -73,43 +86,3 @@ class RealSnooper:
         msg_id = int(data[4:8].hex(), 16)
         msg = data[8:]
         return (Pt, msg_id, msg)
-
-    def decode_post_response(self, res):
-        res = str(res, "utf-8")
-        lines = res.split("\n")
-        header = lines[0].split(' ')
-        status_code = int(header[1])
-        return status_code
-
-    def construct_post_request_body(self, message, version="1.1", headers={}):
-        request = ""
-        request += f"POST / HTTP/{version}\r\n"
-        request += f"Host: {self.SERVER_IP_ADDR}:{self.SERVER_AUTH_PORT}\r\n"
-        
-        for k, v in headers.items():
-            request += f"{k}: {v}\r\n"
-        
-        msg_len = len(message)
-        
-        request += f"Content-Length: {msg_len}\r\n"
-        request += "\r\n" + message
-        
-        return request
-
-    def send_post_request(self, message, headers={}):
-        # create socket
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
-        sock.connect((self.SERVER_IP_ADDR, self.SERVER_AUTH_PORT))
-
-        request = self.construct_post_request_body(message, headers=headers)
-        n = sock.send(bytes(request, "utf-8"))
-        
-        try:
-            data = sock.recv(1024)
-            res = self.decode_post_response(data)
-            return res
-        except socket.timeout:
-            return None
-        finally:
-            sock.close()

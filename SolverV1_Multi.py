@@ -9,10 +9,10 @@ def factors(n):
 
 from PossibleMessage import PossibleMessage, ChunkConflict, EOFMismatch
 
-class Solver_V1:
-    def __init__(self, snooper, sniper, logger=None):
+class Solver_V1_Multi:
+    def __init__(self, snooper, snipers, logger=None):
         self.snooper = snooper
-        self.sniper = sniper
+        self.snipers = snipers
 
         # Maximum possible number of packets in potential message
         self.MAX_PACKETS = 500 # Based on probability distribution of possible total packets, highly unlikely to be above 500
@@ -29,6 +29,7 @@ class Solver_V1:
         self.all_packets = []
         self.unique_packets = set([])
         self.EOF_packets = []
+        self.EOF_ids = set([])
         
         # use starter id to get message offset
         self.STARTER_ID = None
@@ -40,11 +41,16 @@ class Solver_V1:
         # value = PossibleMessage object
         self.possible_messages = set([])
     
+    @property
+    def TOTAL_SNOOPERS(self):
+        return self.snooper.TOTAL_SNOOPERS
+    
     # get score if we attempt to snipe a particular location
     # we know the probability of an offset occuring
-    def get_sniping_score(self, target_id):
+    def get_sniping_score(self, target_id, snooper_index):
         index = target_id-self.STARTER_ID
-        return self.sniper.get_score(self.possible_messages, index)
+        sniper = self.snipers[snooper_index]
+        return sniper.get_score(self.possible_messages, index)
     
     # get the actual score
     def get_actual_score(self, target_id):
@@ -56,26 +62,32 @@ class Solver_V1:
         return score
         
     # greedy search the best Cr to snipe a packet
-    def get_Cr(self):
+    def get_Crs(self):
+        # RANDOM_RANGE = (1,2)
+        # RANDOM_RANGE = (11,20)
+        RANDOM_RANGE = (7, 12)
+
         # random search if cant snipe
         if not self.LAST_ID:
-            return random.randint(8,12)
+            return [random.randint(*RANDOM_RANGE) for _ in range(self.TOTAL_SNOOPERS)]
 
         if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
-            return self.greedy_snipe()
+            return [self.greedy_snipe(i) for i in range(self.TOTAL_SNOOPERS)]
         
-        return random.randint(8,12)
+        return [random.randint(*RANDOM_RANGE) for _ in range(self.TOTAL_SNOOPERS)]
 
-    def greedy_snipe(self): 
+    def greedy_snipe(self, snooper_index): 
         hop_scores = []
-        for hop in range(7,100):
-            score = self.get_sniping_score(self.LAST_ID+hop)
-            sort_val = score*1000 - abs(hop-10)
+        # for hop in range(7,100):
+        for hop in range(7, 20):
+            score = self.get_sniping_score(self.LAST_ID+hop, snooper_index)
+            # sort_val = score*1000 - abs(hop-random.randint(12,40))
+            sort_val = score*1000 - abs(hop-random.randint(11,13))
             hop_scores.append((sort_val, score, hop))
         
         _, best_score, best_hop = max(hop_scores, key=lambda h:h[0])
         
-        self.logger.debug(f"Sniping for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
+        self.logger.debug(f"Sniping snooper#{snooper_index} for {self.LAST_ID+best_hop} with hop={best_hop} score={best_score:.2f}")
         return best_hop
 
     # calculate factors and update possible messages 
@@ -106,16 +118,16 @@ class Solver_V1:
         for m in invalid_messages:
             self.logger.debug(f"Removed length {len(m)} since not a factor")        
             self.possible_messages.remove(m)
-
+    
     # get message and add them to the relevant queues
-    def get_message(self, Cr=None):
-        if Cr is None:
-            Cr = self.get_Cr()
+    def get_message(self, Crs=None):
+        if Crs is None:
+            Crs = self.get_Crs()
         
         # attempt to get message
         for _ in range(self.MAX_RETRIES):
             try:
-                packet = self.snooper.get_message(Cr)
+                packets = self.snooper.get_messages(Crs)
                 self.total_requests += 1
                 break
             except socket.timeout:
@@ -123,35 +135,62 @@ class Solver_V1:
                 continue
         else:
             raise Exception(f"Timed out after {self.MAX_RETRIES} retries")
-                
-        msg_id, msg = packet
         
-        # add packet to relevant queues        
-        self.all_packets.append(packet)
-        self.unique_packets.add(msg)
-        if 0x04 in msg:
-            self.EOF_packets.append(packet)
-            self.calculate_factors()
-        
-        # set our first packet
-        if self.STARTER_ID is None:
-            self.STARTER_ID = msg_id
-            return packet
-        
-        # get score on concurrent packets
-        actual_score = self.get_actual_score(msg_id)
+        # add packets to relevant queues
+        for i, packet in enumerate(packets):
+            if packet is None:
+                self.logger.debug(f"socket#{i} timedout")
+                continue
 
-        # check if our packet sniping was successful
-        if self.LAST_ID is None:
-            snipe_error = None
-        else:
-            target_id = self.LAST_ID+Cr 
-            snipe_error = msg_id-target_id
-            self.sniper.push_error(snipe_error)
+            msg_id, msg = packet
+            self.all_packets.append(packet)
+            self.unique_packets.add(msg)
+
+        # insert the EOF packets in sorted order 
+        for packet in sorted(filter(None, packets)):
+            msg_id, msg = packet
+            if 0x04 in msg and msg_id not in self.EOF_ids:
+                self.EOF_ids.add(msg_id)
+                self.EOF_packets.append(packet)
+                self.calculate_factors()
+        
+        # update tracker ids
+        snipers = [sniper for packet, sniper in zip(packets, self.snipers) if packet]
+        Crs = [Cr for packet, Cr in zip(packets, Crs) if packet]
+        indices = [i for packet, i in zip(packets, range(self.TOTAL_SNOOPERS)) if packet]
+        packets = [packet for packet in packets if packet]
+
+        # if no valid packets, then all snoopers have timedout
+        if len(packets) == 0:
+            self.logger.error("All snooper channels have timed out")
+            return
+
+        msg_ids = [msg_id for msg_id, _ in packets]
+        if self.STARTER_ID is None:
+            self.STARTER_ID = min(msg_ids)
+
+        last_id = self.LAST_ID
+        self.LAST_ID = max(msg_ids)
+
+        if last_id is None:
+            return
+
+        # determine sniping error for each snooper
+        sniper_errors = []
+        for sniper, packet, Cr in zip(snipers, packets, Crs):
+            msg_id, _ = packet
+            target_id = last_id+Cr
+            error = msg_id-target_id
+            sniper.push_error(msg_id-target_id)
+            sniper_errors.append(error)
+
+        # for each packet, get its actual score
+        scores = [self.get_actual_score(msg_id) for msg_id in msg_ids]
 
         # keep track of last id for future sniping attempts
-        self.LAST_ID = msg_id
-        self.logger.debug(f"Got [{msg_id}] @ {self.total_requests} snipe_error=[{snipe_error}] score=[{actual_score}]")
+        metadata = zip(indices, msg_ids, scores, sniper_errors)
+        for i, msg_id, score, sniper_error in metadata:
+            self.logger.debug(f"Got [{msg_id}] @ {self.total_requests} snooper={i} snipe_error=[{sniper_error}] score=[{score}]")
         
         return packet
         
