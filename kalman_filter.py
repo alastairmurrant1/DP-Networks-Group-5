@@ -49,7 +49,7 @@ class KalmanSolver:
             start_id = ids[i]
             end_ids = ids[i+1:]
             for end_id in end_ids:
-                lengths.append(end_id-start_id)
+                lengths.append(abs(end_id-start_id))
 
         lengths = set.intersection(*[set(factors(n)) for n in lengths])
 

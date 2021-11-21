@@ -158,7 +158,7 @@ class Solver_V1_MultiKalman:
             start_id = ids[i]
             end_ids = ids[i+1:]
             for end_id in end_ids:
-                lengths.append(end_id-start_id)
+                lengths.append(abs(abs(end_id-start_id)))
         
         lengths = set([L for L in lengths if L != 0])
         if len(lengths) == 0:
@@ -244,7 +244,7 @@ class Solver_V1_MultiKalman:
             self.get_message()
         
         (start_id,_), (end_id,_) = self.EOF_packets[:2]
-        lengths = factors(end_id-start_id)
+        lengths = factors(abs(end_id-start_id))
         lengths = [n for n in lengths if n <= self.MAX_PACKETS]
         for n in lengths:
             self.possible_messages.add(PossibleMessage(n))
