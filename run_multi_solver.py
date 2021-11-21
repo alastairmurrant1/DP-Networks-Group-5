@@ -27,8 +27,7 @@ from PacketSniper import PacketSniper
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument("--total-snoopers", default=10, type=int)
-args = parser.parse_args()
-
+args, unknown =parser.parse_known_args()
 # Setup child snoopers
 # run this locally
 snoopers = []
@@ -79,3 +78,5 @@ while True:
         
     if res == 205:
         break
+
+# %%

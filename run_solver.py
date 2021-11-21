@@ -18,6 +18,7 @@ import RealPostServer
 import TestSnooperServer
 import SolverV1
 import PacketSniper
+import time;
 
 # fresh reload the module if we are updating it while testing
 reload(SolverV1)
@@ -51,14 +52,17 @@ post_server = RealPostServer(SERVER_PORT=snooper.SERVER_PORT+1)
 # %% Run our solver against this
 messages = []
 sniper = PacketSniper()
-
+startTime=time.time()
+print(startTime)
 while True:
     solver = Solver(snooper, sniper)
     solver.logger.setLevel(logging.DEBUG)
     
     final_msg = solver.run(sparse_guess=True)
     messages.append(final_msg)
-
+    endTime=time.time()
+    print(endTime)
+    print(endTime-startTime)
     res = post_server.post_message(final_msg)
     if res < 400:
         logging.info(f"Message correct @ {solver.total_requests}")
@@ -68,3 +72,4 @@ while True:
         
     if res == 205:
         break
+# %%

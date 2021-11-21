@@ -2,14 +2,15 @@
 Keeps tracks of recent sniping errors to build a density function
 For a given set of masks, it returns the scores based on a heuristic
 """
-from collections import deque, Counter, time
+from collections import deque, Counter
+import time
 
 class PacketSniper:
     def __init__(self, maxlen=100):
         self.maxlen = maxlen
         self.errors = deque([], maxlen=maxlen+1)
         self.counts = Counter([])
-        self.countsTimes = Counter([])
+        self.countsTimes = deque([])
         self.PDF = {}
 
         self.net_counts = Counter([])
@@ -20,12 +21,16 @@ class PacketSniper:
     def push_error(self, error):
         self.errors.append(error)
         self.counts[error] += 1
-        self.countsTimes[error]=time.time()
+        self.countsTimes.append((time.time(), error))
+
+        #self.countsTimes[error]=time.time()
 
         if len(self.errors) > self.maxlen:
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
-            self.countsTimes[error].delete()
+            #self.countsTimes[error].delete()
+            self.countsTimes.popleft()
+
         
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
@@ -40,17 +45,18 @@ class PacketSniper:
 
     @property
     def time_PDF(self, t=1):
-        i=0
         newCounts = Counter([])
-        for k,v in self.net_counts.items():
+        for item in self.countsTimes.keys():
+            if (time.time()-item < t):
+                newCounts[self.countsTimes.get(item)]+=1
 
-            if (time.time()- self.countsTimes[k] < t):
-                newCounts[k]=v
+            else :
+                self.countsTimes.popleft()
             
         
         return {k:v/N for k,v in newCounts.items() }
     
-    # get the most likely probabilities
+    # get the most likely over 1 sec time probabilities
     def get_over_range_pdf(self, N=5):
         pdf = list(time_PDF(self).items())
 
@@ -68,6 +74,7 @@ class PacketSniper:
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
     def get_score(self, messages, index, threshold=0.01, N=4):
         score = 0
+        #for error, proba in self.get_over_range_pdf(N=N):
         for error, proba in self.get_truncated_pdf(N=N):
             # ignore if probability too low
             if proba < threshold:
