@@ -258,15 +258,23 @@ class Solver_V1_MultiKalman:
             self.possible_messages.add(PossibleMessage(n))
 
     # guess the number of packets required to fulfill character count 
+    # return the number of known packets, and the number of unknown packets
+    # default = the mean total characters in a single packet
+    # start_id = the packet we are counting from
+    # char_count = the desired number of characters we need to reach
     def get_known_total_chars(self, start_id, char_count, default=12):
         with self.snoop_lock:
             i = start_id - self.STARTER_ID
+
+            # we select the longest possible message
+            # this is the more conservative since it has more unknown packets
             message = list(self.possible_messages)[-1]
             
             total_unknown = 0
             total_known = 0
             total_char = 0
 
+            # keep going through packets until we reach character count
             while total_char < char_count:
                 i += 1
                 chunk = message[i]
