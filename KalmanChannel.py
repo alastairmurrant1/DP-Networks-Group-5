@@ -1,6 +1,5 @@
 from collections import deque
 from timeit import default_timer
-import numpy as np
 import socket
 import logging
 
@@ -45,7 +44,7 @@ class KalmanChannel:
 
         # STEP 1: Compensate for transmission latency based on last N reading
         # compensation for transmission latency
-        avg_tx = np.array(list(self.dt_prev_rx)).mean()
+        avg_tx = sum(self.dt_prev_rx) / len(self.dt_prev_rx)
         t0 = default_timer()
         dt_delay_1 = t_prev_update - t0
         T_estim = (avg_tx + dt_delay_1) * rate

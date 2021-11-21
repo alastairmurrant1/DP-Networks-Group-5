@@ -2,7 +2,6 @@ import random
 import socket
 import logging
 from timeit import default_timer
-import numpy as np
 from collections import deque
 
 # https://stackoverflow.com/questions/6800193/what-is-the-most-efficient-way-of-finding-all-the-factors-of-a-number-in-python
@@ -262,7 +261,7 @@ class Solver_V1_Kalman:
             snooper = self.snooper
 
             # compensation for transmission latency
-            avg_tx = np.array(list(self.dt_prev_rx)).mean()
+            avg_tx = sum(self.dt_prev_rx) / len(self.dt_prev_rx)
             t0 = default_timer()
             dt_delay_1 = t_prev_update - t0
             T_estim = (avg_tx + dt_delay_1) * rate
