@@ -6,14 +6,14 @@ import logging
 
 from RealSnooperServer import RealSnooper
 
-file_logger = logging.FileHandler('solver_multi_v1.log')
+file_logger = logging.FileHandler('solver_multi_v1.log', mode='w+')
 console = logging.StreamHandler()
 console.setLevel(logging.DEBUG)
 
 formatter = logging.Formatter('%(asctime)s.%(msecs)03d:%(levelname)s:%(name)s:%(message)s', datefmt="%H:%M:%S")
 file_logger.setFormatter(formatter)
 
-logging.basicConfig(handlers=[file_logger, console])
+logging.basicConfig(handlers=[console])
 logging.getLogger().setLevel(logging.DEBUG)
 
 # %% Script for testing our different solvers
@@ -26,18 +26,20 @@ from PacketSniper import PacketSniper
 # %% Startup the real snooper server
 import argparse
 parser = argparse.ArgumentParser()
-parser.add_argument("--total-snoopers", default=10, type=int)
-args, unknown =parser.parse_known_args()
+parser.add_argument("--total-snoopers", default=3, type=int)
+parser.add_argument("--server-ip-addr", default="149.171.36.192")
+parser.add_argument("--server-port", default=8319, type=int)
+parser.add_argument("--server-timeout", default=200, type=int)
+parser.add_argument("--dense-guess", action='store_true')
+
+args = parser.parse_args()
+
 # Setup child snoopers
 # run this locally
 snoopers = []
-s0 = RealSnooper()
-s0.settimeout(0.1)
-snoopers.append(s0)
-
-for _ in range(args.total_snoopers-1):
-    s = RealSnooper()
-    s.settimeout(0.1)
+for _ in range(args.total_snoopers):
+    s = RealSnooper(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port)
+    s.settimeout(args.server_timeout / 1000)
     snoopers.append(s)
 
 # snooper echos have only 1 response
@@ -56,7 +58,7 @@ for i, snooper in enumerate(snoopers):
 
 # Create parent snooper
 snooper_server = MultiSnooperServer(snoopers)
-post_server = RealPostServer()
+post_server = RealPostServer(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=args.server_port+1)
 
 # %% Run our solver against this
 messages = []
@@ -66,7 +68,7 @@ while True:
     solver = Solver(snooper_server, snipers)
     solver.logger.setLevel(logging.DEBUG)
     
-    final_msg = solver.run(sparse_guess=True)
+    final_msg = solver.run(sparse_guess=not args.dense_guess)
     messages.append(final_msg)
 
     res = post_server.post_message(final_msg)

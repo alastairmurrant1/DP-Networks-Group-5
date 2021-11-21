@@ -5,9 +5,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--server-ip-addr", default="149.171.36.192")
 parser.add_argument("--server-port", default=8319, type=int)
 parser.add_argument("--server-timeout", default=200, type=int)
-parser.add_argument("--dense-guess", action="store_true")
 
-args = parser.parse_args()
+args = parser.parse_args([])
 
 # %% Setup logger
 import logging
@@ -29,7 +28,6 @@ import RealPostServer
 import TestSnooperServer
 import SolverV1
 import PacketSniper
-import time;
 
 # fresh reload the module if we are updating it while testing
 reload(SolverV1)
@@ -64,24 +62,24 @@ post_server = RealPostServer(SERVER_IP_ADDR=args.server_ip_addr, SERVER_PORT=arg
 # %% Run our solver against this
 messages = []
 sniper = PacketSniper()
-startTime=time.time()
-print(startTime)
+
 while True:
     solver = Solver(snooper, sniper)
     solver.logger.setLevel(logging.DEBUG)
     
-    final_msg = solver.run(sparse_guess=not args.dense_guess)
+    final_msg = solver.run(sparse_guess=True)
     messages.append(final_msg)
-    endTime=time.time()
-    print(endTime)
-    print(endTime-startTime)
+
     res = post_server.post_message(final_msg)
     if res < 400:
         logging.info(f"Message correct @ {solver.total_requests}")
+        break
     else:
         logging.error("Got an incorrect message")
         break
-        
-    if res == 205:
-        break
+
 # %%
+import matplotlib.pyplot as plt
+
+c = sniper.counts
+plt.bar(list(c.keys()), list(c.values()))
