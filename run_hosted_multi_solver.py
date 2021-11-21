@@ -60,3 +60,5 @@ while True:
         
     if res == 205:
         break
+
+# %%
