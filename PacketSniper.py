@@ -25,20 +25,17 @@ class PacketSniper:
 
         #self.countsTimes[error]=time.time()
 
-        if len(self.errors) > self.maxlen:
+
+       # print(f"N before: {len(self.errors)}")
+       #gets a time window of 1 sec and observes all errors in last 1 sec
+        out = self.countsTimes.popleft()
+        while (time.time() - out > 1):
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
-            self.countsTimes[error].delete()
-            self.countsTimes.popleft()
-       # print(f"N before: {len(self.errors)}")
-        #out = self.countsTimes.popleft()
-        #while (time.time() - out > 1):
-            #del_error = self.errors.popleft()
-            #self.counts[del_error] -= 1
-            #out = self.countsTimes.popleft()
+            out = self.countsTimes.popleft()
         
-        #self.countsTimes.appendleft(out)
-        print(f"N after: {len(self.errors)}")
+        self.countsTimes.appendleft(out)
+        #print(f"N after: {len(self.errors)}")
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
 
