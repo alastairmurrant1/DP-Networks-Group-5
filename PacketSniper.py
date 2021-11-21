@@ -8,7 +8,7 @@ import time
 class PacketSniper:
     def __init__(self, maxlen=100):
         self.maxlen = maxlen
-        self.errors = deque([], maxlen=maxlen+1)
+        self.errors = deque([])
         self.counts = Counter([])
         self.countsTimes = deque([])
         self.PDF = {}
@@ -26,13 +26,11 @@ class PacketSniper:
 
        # print(f"N before: {len(self.errors)}")
        #gets a time window of 1 sec and observes all errors in last 1 sec
-        out = self.countsTimes.popleft()
-        while (time.time() - out > 1):
+        while (time.time() - self.countsTimes[0] > 1):
+            self.countsTimes.popleft()
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
-            out = self.countsTimes.popleft()
         
-        self.countsTimes.appendleft(out)
         #print(f"N after: {len(self.errors)}")
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
