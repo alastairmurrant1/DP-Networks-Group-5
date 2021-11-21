@@ -3,26 +3,37 @@ Keeps tracks of recent sniping errors to build a density function
 For a given set of masks, it returns the scores based on a heuristic
 """
 from collections import deque, Counter
+import time
 
 class PacketSniper:
     def __init__(self, maxlen=100):
         self.maxlen = maxlen
         self.errors = deque([], maxlen=maxlen+1)
         self.counts = Counter([])
+        self.countsTimes = deque([])
         self.PDF = {}
 
         self.net_counts = Counter([])
         self.nb_snipes = 0
+        
 
     # update recent error window, counts, and PDF 
     def push_error(self, error):
         self.errors.append(error)
         self.counts[error] += 1
+        self.countsTimes.append(time.time())
 
-        if len(self.errors) > self.maxlen:
+
+       # print(f"N before: {len(self.errors)}")
+       #gets a time window of 1 sec and observes all errors in last 1 sec
+        out = self.countsTimes.popleft()
+        while (time.time() - out > 1):
             del_error = self.errors.popleft()
             self.counts[del_error] -= 1
+            out = self.countsTimes.popleft()
         
+        self.countsTimes.appendleft(out)
+        #print(f"N after: {len(self.errors)}")
         N = len(self.errors)
         self.PDF = {k:v/N for k,v in self.counts.items()}
 
@@ -33,7 +44,9 @@ class PacketSniper:
     def net_PDF(self):
         N = self.nb_snipes
         return {k:v/N for k,v in self.net_counts.items()}
-    
+
+   
+
     # get the most likely probabilities
     def get_truncated_pdf(self, N=5):
         pdf = list(self.PDF.items())
@@ -44,6 +57,7 @@ class PacketSniper:
     # return score = sum of proba[offset] * missing_chunks[offset] for all messages
     def get_score(self, messages, index, threshold=0.01, N=4):
         score = 0
+        #for error, proba in self.get_over_range_pdf(N=N):
         for error, proba in self.get_truncated_pdf(N=N):
             # ignore if probability too low
             if proba < threshold:
