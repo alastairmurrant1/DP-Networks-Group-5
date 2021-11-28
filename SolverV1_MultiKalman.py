@@ -37,12 +37,10 @@ class Solver_V1_MultiKalman:
         self.unique_packets = set([])
         self.EOF_packets = []
         
-        # use starter id to get message offset
-        self.STARTER_ID = None
-        self.LAST_ID = None
         self.FOUND_FACTORS = False
 
         # kalman filter
+        self.xk = None
         self.pk = 0
         self.t_prev_update = 0
         self.CHAR_RATE = rate
@@ -87,7 +85,7 @@ class Solver_V1_MultiKalman:
             combined_pdf = {}
             for snipe in combined_snipes:
                 for error, proba in snipe.pdf:
-                    i = (snipe.target_id - self.STARTER_ID + error) % N
+                    i = (snipe.target_id + error) % N
                     combined_pdf.setdefault(i, 0)
                     combined_pdf[i] += proba
 
@@ -107,28 +105,7 @@ class Solver_V1_MultiKalman:
 
         return score
     
-    # get the actual score
-    def get_actual_score(self, target_id):
-        with self.snoop_lock:
-            score = 0
-            for message in self.possible_messages:
-                i = target_id-self.STARTER_ID
-                if message[i] is None:
-                    score += 1
-            return score
-        
-    # greedy search the best Cr to snipe a packet
-    def get_Cr(self, id, sniper):
-        with self.snoop_lock:
-            # random search if cant snipe
-            if not self.LAST_ID:
-                return random.randint(8,12)
-
-            if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
-                return self.greedy_snipe(id, sniper)
-            
-            return random.randint(8,12)
-
+    # search for the best Sr
     def greedy_snipe(self, id, sniper): 
         hop_scores = []
         pdf = sniper.get_truncated_pdf(N=8)
@@ -141,6 +118,18 @@ class Solver_V1_MultiKalman:
         
         # self.logger.debug(f"Sniping for {(id+best_hop) % 1000} with hop={best_hop} score={best_score:.2f}")
         return best_hop
+    
+    # greedy search the best Cr to snipe a packet
+    def get_Cr(self, id, sniper):
+        with self.snoop_lock:
+            # random search if cant snipe
+            if not self.xk:
+                return random.randint(8,12)
+
+            if self.FOUND_FACTORS or len(self.possible_messages) < self.DENSE_GUESS_THRESHOLD:
+                return self.greedy_snipe(id, sniper)
+            
+            return random.randint(8,12)
 
     # calculate factors and update possible messages 
     def calculate_factors(self):
@@ -180,10 +169,6 @@ class Solver_V1_MultiKalman:
     def on_message(self, msg_id, msg):
         packet = (msg_id, msg)
 
-        # set our first packet
-        if self.STARTER_ID is None:
-            self.STARTER_ID = msg_id
-        
         # add packet to relevant queues        
         self.all_packets.append(packet)
         self.unique_packets.add(msg)
@@ -210,7 +195,7 @@ class Solver_V1_MultiKalman:
     def construct_messages(self):
         for message in list(self.possible_messages):
             for chunk_id, chunk in self.all_packets:
-                i = chunk_id-self.STARTER_ID
+                i = chunk_id
                 try:
                     message[i] = chunk
                 except ChunkConflict:
@@ -238,20 +223,6 @@ class Solver_V1_MultiKalman:
         completed_message = completed_messages[0]
         return completed_message.message
 
-    # get initial guesses from factors of maximum possible length 
-    def get_initial_guess(self):
-        while len(self.EOF_packets) < 2:
-            self.get_message()
-        
-        (start_id,_), (end_id,_) = self.EOF_packets[:2]
-        lengths = factors(abs(end_id-start_id))
-        lengths = [n for n in lengths if n <= self.MAX_PACKETS]
-        for n in lengths:
-            self.possible_messages.add(PossibleMessage(n))
-
-        self.cull_invalid_lengths()
-        self.construct_messages()
-
     # get all possible guesses from 1 to MAX_PACKETS 
     def get_all_guesses(self):
         for n in range(1, self.MAX_PACKETS+1):
@@ -264,7 +235,7 @@ class Solver_V1_MultiKalman:
     # char_count = the desired number of characters we need to reach
     def get_known_total_chars(self, start_id, char_count, default=12):
         with self.snoop_lock:
-            i = start_id - self.STARTER_ID
+            i = start_id
 
             # we select the longest possible message
             # this is the more conservative since it has more unknown packets
@@ -306,22 +277,23 @@ class Solver_V1_MultiKalman:
         self.on_message(msg_id, msg)
         self.dt_prev_rx.append(dt_rx)
 
-        self.LAST_ID = msg_id
+        self.xk = msg_id
         self.t_prev_update = t1
-    
+
+    # our snooping channel child thread 
     def spawn_channel_thread(self, channel: KalmanChannel):
         msg_id, msg, t_rx = channel.seed(self.CHAR_RATE)
 
         with self.snoop_lock:
             self.on_message(msg_id, msg)
             self.snoop_count.release()
-            if self.LAST_ID is None or self.LAST_ID < msg_id:
-                self.LAST_ID = msg_id
+            if self.xk is None or self.xk < msg_id:
+                self.xk = msg_id
                 self.t_prev_update = t_rx
         
         # infinite loop while running
         while self.IS_THREAD_RUNNING:
-            res = channel.run(self.CHAR_RATE, self.LAST_ID, self.pk, self.t_prev_update, self)
+            res = channel.run(self.CHAR_RATE, self.xk, self.pk, self.t_prev_update, self)
             if res is None:
                 continue
 
@@ -330,11 +302,12 @@ class Solver_V1_MultiKalman:
             with self.snoop_lock:
                 self.on_message(msg_id, msg)
                 self.snoop_count.release()
-                if self.LAST_ID < xk_next:
-                    self.LAST_ID = xk_next
+                if self.xk < xk_next:
+                    self.xk = xk_next
                     self.pk = pk_next
                     self.t_prev_update = t_update
-        
+
+    # run main solver thread 
     def run(self):
         self.logger.debug(f"Starting solver run")
         self.logger.info(f"Starting dense guesses from 1 to {self.MAX_PACKETS}")
